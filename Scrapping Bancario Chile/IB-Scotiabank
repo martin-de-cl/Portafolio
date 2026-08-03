@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+#-*- coding: utf-8 -*-
+
+import os
+import datetime as dt
+import time
+import csv
+
+from pathlib import Path
+from selenium import webdriver
+from base64 import b64decode
+
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import ElementNotVisibleException
+from selenium.webdriver.common.keys import Keys
+
+from mods import bkning_dates
+
+usr_usr    = b'dXNlcm5hbWU='
+usr_client = b'dXNlcm5hbWVfY29tcGFueQ=='
+psw = b'cGFzc3dvcmQ='
+
+
+def get_bank_folder(banco):
+    folder = os.path.dirname(os.path.abspath(__file__))
+    Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+    Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + banco))
+    return Bancos
+
+def get_csv_folder():
+    folder = os.path.dirname(os.path.abspath(__file__))
+    Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+    Cuadraje = os.path.abspath(os.path.join(Revpaths + "/tmp/saldos_iniciales_online.csv"))
+    return Cuadraje
+
+# ---- Navegacion ----
+
+def get_webdriver(banco):
+    ffp = webdriver.FirefoxProfile()
+    ffp.set_preference("browser.download.folderList", 2)
+    ffp.set_preference("browser.download.manager.showWhenStarting", False)
+    ffp.set_preference("browser.download.dir", get_bank_folder(banco))
+    ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                       "text/html,bsarff/rff,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8,text/csv,"
+                       "application/octet-stream,zz-application/zz-winassoc-dat")
+    return webdriver.Firefox(ffp)
+
+def get_login(driver):
+    count_to_exit = 0
+    driver.get('https://www.scotiabank.cl/login/empresas/?nocache=true&_ga=1.41796007.400071827.1448623487')
+    while True:
+        try:
+            driver.find_element_by_id('rutCliente').send_keys(b64decode(usr_client).decode('utf-8'))
+            driver.find_element_by_id('rutUsuario').send_keys(b64decode(usr_usr).decode('utf-8'))
+            driver.find_element_by_id('password').send_keys(b64decode(psw).decode('utf-8'))
+            driver.find_element_by_xpath('//*[@id="login-form"]/input[11]').click()
+            break
+        except:
+            count_to_exit += 1
+            if count_to_exit == 10:
+                break
+
+def get_driver_quit(driver):
+    driver.quit()
+
+def surf_to_cartola(driver):
+    count_to_exit = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frameset/frame[2]'))
+
+            if driver.find_element_by_xpath('//*[@id="menu"]/li[1]/ul/li[7]/a').is_displayed():
+                driver.find_element_by_xpath('//*[@id="menu"]/li[1]/ul/li[7]/a').click()
+                break
+            else:
+                driver.find_element_by_xpath('//*[@id="menu"]/li[1]/a').click()
+                driver.find_element_by_xpath('//*[@id="menu"]/li[1]/ul/li[7]/a').click()
+                break
+        except NoSuchElementException:
+            driver.implicitly_wait(1)
+            count_to_exit += 1
+            if count_to_exit == 10:
+                break
+        except ElementNotVisibleException:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frameset/frame[2]'))
+
+def surf_to_saldos(driver):
+    stop_counter = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frameset/frame[2]'))
+            driver.find_element_by_xpath('//*[@id="menu"]/li[1]/a').click()
+            driver.find_element_by_xpath('//*[@id="menu"]/li[1]/ul/li[1]/a').click()
+            break
+        except NoSuchElementException:
+            driver.implicitly_wait(1)
+            stop_counter +=1
+            if stop_counter == 10:
+                break
+
+def get_saldos(driver):
+
+    def drop_abonos_csv(CSVARC, tuple_csv):
+        with open(CSVARC, 'a', newline='') as csvfile:
+            sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            sw.writerow(tuple_csv)
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('CONTENIDO'))
+    cuenta = driver.find_element_by_xpath('//*[@id="contenido"]/div/table[1]/tbody/tr[1]/td[4]').text
+    saldo = driver.find_element_by_xpath('//*[@id="contenido"]/div/table[2]/tbody/tr[1]/td[2]').text
+
+    print('SCOT, SCF, SCOT-%s, $ %s' % (cuenta.replace('-','')[-5:], saldo))
+    tuple_saldo = ('SCOT','SCF','SCOT-'+cuenta.replace('-','')[-5:], saldo.replace('.',''))
+
+    drop_abonos_csv(get_csv_folder(), tuple_saldo)
+
+def get_file(driver):
+    count_to_exit = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frame'))
+            driver.find_element_by_xpath(
+                '/html/body/form/center/table/tbody/tr[1]/td/table/tbody/tr[8]/td/input').click()
+            time.sleep(4)
+            break
+        except:
+            count_to_exit += 1
+            if count_to_exit == 10:
+                break
+
+# ---- Dates ----
+
+def give_dates_for_a_week(driver):
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frame'))
+
+    f_inicio = dt.datetime.today()-dt.timedelta(6)
+    f_fin    = dt.datetime.today()
+
+    stop_counter = 0
+    while True:
+        try:
+            #---Fecha de Inicio, -7 ---
+            driver.find_element_by_name('idd').clear()
+            driver.find_element_by_name('idd').send_keys(f_inicio.strftime('%d'))
+            driver.find_element_by_name('imm').clear()
+            driver.find_element_by_name('imm').send_keys(f_inicio.strftime('%m'))
+            driver.find_element_by_name('iaa').clear()
+            driver.find_element_by_name('iaa').send_keys(f_inicio.strftime('%Y'))
+
+            #---Fecha de Fin, hoy   ---
+            driver.find_element_by_name('fdd').clear()
+            driver.find_element_by_name('fdd').send_keys(f_fin.strftime('%d'))
+            driver.find_element_by_name('fmm').clear()
+            driver.find_element_by_name('fmm').send_keys(f_fin.strftime('%m'))
+            driver.find_element_by_name('faa').clear()
+            driver.find_element_by_name('faa').send_keys(f_fin.strftime('%Y'))
+            break
+        except NoSuchElementException:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('CONTENIDO'))
+            stop_counter += 1
+            if stop_counter > 10:
+                print('Imposible encontrar el lugar de las fechas')
+                break
+
+    #--- Go in ---
+
+def give_daily_dates(driver):
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_xpath('/html/frameset/frameset/frame'))
+
+    f_inicio = dt.datetime.strptime(bkning_dates.live_date().get_date(),'%d/%m/%Y')
+    f_fin = (f_inicio+dt.timedelta(1))
+
+    stop_counter = 0
+    while True:
+        try:
+            # ---Fecha de Inicio, -7 ---
+            driver.find_element_by_name('idd').clear()
+            driver.find_element_by_name('idd').send_keys(f_inicio.strftime('%d'))
+            driver.find_element_by_name('imm').clear()
+            driver.find_element_by_name('imm').send_keys(f_inicio.strftime('%m'))
+            driver.find_element_by_name('iaa').clear()
+            driver.find_element_by_name('iaa').send_keys(f_inicio.strftime('%Y'))
+
+            # ---Fecha de Fin, hoy   ---
+            driver.find_element_by_name('fdd').clear()
+            driver.find_element_by_name('fdd').send_keys(f_fin.strftime('%d'))
+            driver.find_element_by_name('fmm').clear()
+            driver.find_element_by_name('fmm').send_keys(f_fin.strftime('%m'))
+            driver.find_element_by_name('faa').clear()
+            driver.find_element_by_name('faa').send_keys(f_fin.strftime('%Y'))
+            break
+        except NoSuchElementException:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('CONTENIDO'))
+            stop_counter += 1
+            if stop_counter > 10:
+                print('Imposible encontrar el lugar de las fechas')
+                break
+
+def define_day_to_run(day):
+
+    index_day = int(day)
+    today_is = dt.datetime.today().weekday()
+
+    #--- 0 indice de día Lunes ---
+
+    if today_is == index_day:
+        return True
+    else:
+        return False
+
+#####################
+#                   #
+#       Main        #
+#                   #
+#####################
+
+def main():
+
+    if define_day_to_run(0) is True:
+        driver = get_webdriver('Scotiabank')
+        get_login(driver)
+        surf_to_cartola(driver)
+        give_dates_for_a_week(driver)
+        get_file(driver)
+        get_driver_quit(driver)
+    else:
+        print('Interfaz sin ejecucion el dia de hoy')
+
+def main2():
+
+    driver = get_webdriver('Scotiabank')
+    get_login(driver)
+    surf_to_saldos(driver)
+    get_saldos(driver)
+    if define_day_to_run(0) is True:
+        surf_to_cartola(driver)
+        give_dates_for_a_week(driver)
+        get_file(driver)
+        get_driver_quit(driver)
+    elif define_day_to_run(0) is False:
+        driver.quit()
+    else:
+        print('Interfaz sin ejecucion el dia de hoy')
+
+def main3():
+
+    driver = get_webdriver('Scotiabank')
+    get_login(driver)
+    surf_to_saldos(driver)
+    get_saldos(driver)
+    surf_to_cartola(driver)
+    give_daily_dates(driver)
+    get_file(driver)
+    time.sleep(2)
+    driver.quit()
+
+if __name__ == '__main__':
+    main3()
