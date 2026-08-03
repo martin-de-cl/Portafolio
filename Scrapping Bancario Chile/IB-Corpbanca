@@ -1,0 +1,146 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from bs4 import BeautifulSoup
+
+import urllib.request as ur
+import csv
+import time
+import os
+
+from operator import itemgetter
+
+import selenium
+
+from base64 import b64decode
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+mp = mypath()
+
+#Perfil de Firefox
+ffp = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList",2)
+ffp.set_preference("browser.download.manager.showWhenStarting",False)
+ffp.set_preference("browser.download.dir",mp.Banco('Corpbanca'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk","text/csv, text/force_download, application/csv, application/force_download")
+driver = webdriver.Firefox(ffp)
+
+#Login
+Usuario =b'dXNlcm5hbWU='
+PassW   =b'cGFzc3dvcmQ='
+web     = "http://www.corpbanca.cl/ibank/Default.htm?id_login=1"
+CSVARC  = mp.SaldosCSV()
+
+class tiempo:
+    def ayerS(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m")
+    def hoyS(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayer(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m/%Y")
+    def hoy(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def SiLun(self):
+        return dt.datetime.today().weekday()
+ct=tiempo()
+
+#Login
+driver.get(web)
+driver.implicitly_wait(10)
+driver.find_element_by_id('EmpresaNombreDeUsuario').send_keys(b64decode(Usuario).decode('utf-8'))
+driver.find_element_by_id('EmpresaClaveDeUsuario').send_keys(b64decode(PassW).decode('utf-8'))
+driver.find_element_by_id('EmpresaUsuarioEntrar').click()
+driver.implicitly_wait(10)
+
+driver.switch_to.frame(driver.find_element_by_name('frameMain'))
+TablaSaldo  = driver.find_element_by_id('CtasCtesNacionales').find_element_by_tag_name('tbody')
+AXsaldo2    = TablaSaldo.find_element_by_class_name('cbc_pvt_Fila')
+AXsaldo     = AXsaldo2.find_element_by_class_name('cbc_tbl_monto1').text
+SaldoC      = AXsaldo.replace("$","")
+
+print("SCF, CORP-74100, %s"%SaldoC)
+with open(CSVARC, 'a', newline='') as csvfile:
+    sw = csv.writer(csvfile, delimiter=';',quotechar='|',quoting=csv.QUOTE_MINIMAL)
+    sw.writerow([ 'CORP', 'SCF', 'CORP-74100', SaldoC])
+
+time.sleep(2)
+"""
+
+Descarga de Cartolas Historicas
+
+"""
+
+driver.switch_to.default_content()
+driver.switch_to.frame(driver.find_element_by_name("frameMenu"))
+
+driver.find_element_by_xpath("/html/body/form[1]/center/span[2]/table/tbody/tr[1]/td/table/tbody/tr/td/a").click()
+driver.find_element_by_xpath("/html/body/form[1]/center/span[2]/table/tbody/tr[2]/td/table/tbody/tr[3]/td/a").click()
+
+driver.switch_to.default_content()
+driver.switch_to.frame(driver.find_element_by_name('frameMain'))
+
+driver.implicitly_wait(5)
+driver.find_element_by_xpath("/html/body/form/table[3]/tbody/tr/td/table[2]/tbody/tr/td/span/table/tbody/tr[1]/td/table/tbody/tr/td/div/table/tbody/tr[2]/td[1]/a").click()
+
+Cargo = driver.find_element_by_id("lbl_OtrosCargos_LBL_OTROSCARGOS").text
+Abono = driver.find_element_by_id('lbl_DepositosAbonos_LBL_DEPOSITOSABONOS').text
+
+if Cargo != '$ 0' and Abono != '$ 0':
+    Expor  = driver.find_element_by_id("lk_ExportarExcel").click()
+    Expor2 = driver.find_element_by_id("BtnGuardar")
+    Expor2.send_keys(Keys.RETURN)
+
+    time.sleep(5)
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame("frameMainGroup")
+
+    driver.find_element_by_xpath("/html/body/form/div/div[1]/div/div/table/tbody/tr/td/table/tbody/tr/td[11]/a").click()
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame("frameMenu")
+
+    MFile  = driver.find_element_by_xpath("/html/body/form[1]/center/span[2]/table/tbody/tr[1]/td/table/tbody/tr/td/a").click()
+    time.sleep(1)
+    MFile2 = driver.find_element_by_xpath("/html/body/form[1]/center/span[2]/table/tbody/tr[1]/td/table/tbody/tr/td/a").click()
+    time.sleep(3)
+    MFile3 = driver.find_element_by_xpath("/html/body/form[1]/center/span[2]/table/tbody/tr[2]/td/table/tbody/tr[1]/td/a").click()
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame("frameMain")
+
+    driver.implicitly_wait(10)
+
+    MFile4 = driver.find_element_by_xpath("/html/body/form/table[2]/tbody/tr[3]/td/table/tbody/tr[2]/td[4]/a")
+    MFile4.send_keys(Keys.RETURN)
+
+driver.close()
+
+
