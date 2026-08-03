@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+#-*- coding: utf-8 -*-
+
+import os
+import time
+import csv
+import shutil
+
+from base64 import b64decode
+from operator import itemgetter
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
+from selenium.common.exceptions import NoSuchElementException
+
+#Tuples con los datos de login de las empresas en string
+
+Datos = [(b'cnV0LXNpbi12ZXJpZmljYWRvcg==',b'dmVyaWZpY2Fkb3ItcnV0',b'cnV0LXVzdWFyaW8=',b'cnV0LXVzdWFyaW8tdmVy',b'cGFzc3dvcmQ='),]
+web = 'https://www.empresas.bancochile.cl/cgi-bin/navega?pagina=enlinea/login_fus'
+
+ls_saldo = []
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+
+mp = mypath()
+CSVARC = mp.SaldosCSV()
+
+def user_login(driver, ls_perfil):
+    login_id = ['rutemp1','dvemp1','rut1','verificador1','pin1']
+    driver.switch_to.default_content()
+    driver.find_element_by_id('contenidoslogin')
+
+    for i, j in zip(ls_perfil, login_id):
+        driver.find_element_by_id(j).send_keys(i)
+
+    driver.find_element_by_class_name('btn_amarillodegrade').send_keys(Keys.RETURN)
+
+def neo_surf_to_cartola_historica(driver):
+    exit_counter_1 = 0
+    exit_counter_2 = 0
+
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('heading'))
+            empresa = driver.find_element_by_xpath('//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
+            if empresa != None:
+                break
+        except:
+            exit_counter_1 += 1
+            if exit_counter_1 == 10:
+                print('Cant lock on empresa or Menu')
+                break
+            else:
+                pass
+
+    while True:
+        try:
+            if 'SOCOFAR S.A.' == empresa:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name('menu'))
+                driver.implicitly_wait(2)
+                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
+                break
+            else:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name('menu'))
+                driver.implicitly_wait(2)
+                driver.find_element_by_xpath("//a[@name='sub2']").click()
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath("//a[@name='sub4']").click()
+                break
+        except:
+            exit_counter_2 += 1
+            if exit_counter_2 == 10:
+                print('Cant move to Cartola Historica')
+                break
+            else:
+                pass
+
+def surf_to_cartola_historica(driver):
+    counter_1 = 0
+    counter_2 = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('heading'))
+            empresa = driver.find_element_by_xpath('//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
+            break
+        except NoSuchElementException:
+            counter_1 += 1
+            if counter_1 == 10:
+                print('Max. Attempt to locate heading reached')
+                break
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('menu'))
+            driver.implicitly_wait(2)
+            break
+        except NoSuchElementException:
+            counter_2 += 1
+            if counter_2 == 10:
+                print('Max. Attempt to locate menu reached')
+                break
+
+    if 'Empresa1' == empresa:
+        try:
+            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
+        except NoSuchElementException:
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name('menu'))
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
+            except:
+                print('last attempt failed')
+    else:
+        try:
+            driver.find_element_by_xpath("//a[@name='sub2']").click()
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath("//a[@name='sub4']").click()
+        except NoSuchElementException:
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath("//a[@name='sub2']").click()
+            driver.implicitly_wait(4)
+            driver.find_element_by_xpath("//a[@name='sub4']").click()
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name('menu'))
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath("//a[@name='sub2']").click()
+                driver.implicitly_wait(4)
+                driver.find_element_by_xpath("//a[@name='sub4']").click()
+            except:
+                print('last second attempt failed')
+
+def pick_a_cuenta_first_move(driver):
+    counter  = 0
+    while True:
+        try:
+            time.sleep(1)
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
+            driver.implicitly_wait(2)
+            n_cuentas = len(driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/form/div/select[2]')
+                            .find_elements_by_tag_name('option'))
+
+            menu = Select(driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/form/div/select[2]'))
+            menu.select_by_index(0)
+            driver.find_element_by_id('btnSeleccionarCuenta').click()
+
+            return  n_cuentas
+        except NoSuchElementException:
+            counter += 1
+            if counter == 10:
+                print('No se encuentra el elemento. Intentos maximos alcanzados')
+                break
+
+def pick_a_cuenta_second_move(driver, n_cuentas):
+    ncta = int(n_cuentas)
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
+    driver.implicitly_wait(2)
+
+    for option in range(1,ncta):
+
+        try:
+            driver.find_element_by_xpath('//a[@Class="botoCambiarCuenta noImprimible"]').click()
+        except NoSuchElementException:
+            driver.find_element_by_xpath('//a[@Class="noImprimible botoCambiarCuenta"]').click()
+
+        driver.implicitly_wait(2)
+        cuenta_select = Select(driver.find_element_by_xpath('//select[@name="cuentaSeleccionada"]'))
+        cuenta_select.select_by_index(option)
+
+        try:
+            driver.find_element_by_xpath("//input[@id='btnSeleccionarCuenta']").click()
+            driver.implicitly_wait(2)
+        except NoSuchElementException:
+            driver.find_element_by_xpath("//a[@Class='boton']").click()
+            time.sleep(1)
+        finally:
+            #driver.implicitly_wait(5)
+            cuenta_y_empresa = get_empresa_id_from_web(driver)
+            grab_saldo_inicial(driver, cuenta_y_empresa)
+            #driver.implicitly_wait(2)
+            grab_cartola_electronica(driver, cuenta_y_empresa)
+
+def grab_saldo_inicial(driver, cuenta_y_empresa):
+    cuenta = itemgetter(0)(cuenta_y_empresa)
+    empresa = itemgetter(1)(cuenta_y_empresa)
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
+    driver.implicitly_wait(2)
+    saldo = driver.find_element_by_xpath(
+        "//table[@Class='borderTable']/tbody/tr/td/table/tbody/tr[3]/td[3]/strong").text
+    saldo = saldo.replace('$ ','')
+    print('%s, %s, %s' %( empresa, 'CHI-'+cuenta, saldo))
+    ls_saldo.append(('CHI', empresa, 'CHI-'+cuenta, saldo))
+
+def grab_cartola_electronica(driver, cuenta_y_empresa):
+    cuenta = itemgetter(0)(cuenta_y_empresa)
+    empresa = itemgetter(1)(cuenta_y_empresa)
+    nombre = str(empresa+'.CHI.'+cuenta+'.txt')
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
+    cargo = driver.find_element_by_xpath('//table[@Class="borderTable"]/tbody/tr/td/table/tbody/tr[2]/td[7]/nobr').text
+    abono = driver.find_element_by_xpath('//table[@Class="borderTable"]/tbody/tr/td/table/tbody/tr[3]/td[7]/nobr').text
+
+    if cargo == '$ 0' and abono == '$ 0':
+        pass
+    else:
+        driver.find_element_by_xpath('//span[@id="expoDato_arrow"]').click()
+        driver.implicitly_wait(2)
+        driver.find_element_by_xpath('//div[@id="expoDato_child"]/a').click()
+        driver.implicitly_wait(2)
+        tiny_watch_v2(nombre, mp.Banco('Chile'))
+        driver.implicitly_wait(4)
+
+#############################
+##                         ##
+## Funciones de navegacion ##
+##                         ##
+#############################
+
+def firefox_profile():
+    ffp = webdriver.FirefoxProfile()
+    ffp.set_preference("browser.download.folderList",2)
+    ffp.set_preference("browser.download.manager.showWhenStarting",False)
+    ffp.set_preference("browser.download.dir",mp.Banco('Chile'))
+    ffp.set_preference("browser.helperApps.neverAsk.saveToDisk","text/plain, text/csv")
+    return webdriver.Firefox(ffp)
+
+def get_empresa_id_from_web(driver):
+    counter = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('heading'))
+            empresa_web = driver.find_element_by_xpath(
+                '//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
+
+            time.sleep(1)
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
+            driver.implicitly_wait(4)
+            cuenta = driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/ul/li[4]/strong').text[-6:]
+            cuenta = cuenta.replace('-', '')
+            break
+
+        except NoSuchElementException:
+            driver.refresh()
+            if counter == 20:
+                print('no se pudo seguir navegando')
+                break
+            else:
+                counter += 1
+        except UnboundLocalError:
+            pick_a_cuenta_first_move(driver)
+            if counter == 20:
+                print('no se pudo seguir navegando')
+                break
+            else:
+                counter += 1
+
+
+    if empresa_web == 'Empresa1':
+        empresa = 'EMP1'
+    elif empresa_web == 'Empresa2':
+        empresa = 'EMP2'
+    elif empresa_web == 'Empresa3':
+        empresa = 'EMP3'
+    elif empresa_web == 'Empresa4':
+        empresa = 'EMP4'
+    elif empresa_web == 'Empresa5':
+        empresa = 'EMP4'
+    else:
+        empresa = 'NUL'
+
+    return (cuenta, empresa)
+
+#############################
+##                         ##
+##  Operacion de Archivos  ##
+##                         ##
+#############################
+
+def tiny_watch(newname, carpeta):
+    check_download = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
+    while '.part' in check_download:
+        time.sleep(1)
+
+    filename = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
+    old_name_path = os.path.join(carpeta, filename)
+    new_name_path = os.path.join(carpeta, newname)
+
+    if filename in old_name_path:
+        os.rename(old_name_path, new_name_path)
+        time.sleep(0.5)
+
+        if os.path.isfile(old_name_path) == True:
+            if os.stat(old_name_path).st_size == 0:
+                try:
+                    os.remove(old_name_path)
+                except:
+                    print('flag')
+                    pass
+            else:
+                if os.stat(new_name_path).st_size == 0:
+                    try:
+                        os.remove(new_name_path)
+                        os.rename(old_name_path, new_name_path)
+                        time.sleep(1)
+                    except:
+                        print('flag')
+                        pass
+
+def tiny_watch_v2(newname, carpeta):
+    time.sleep(1)
+    while True:
+        if 'part' in max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))):
+            time.sleep(1)
+        elif open(os.path.join(carpeta, max([f for f in os.listdir(carpeta)],
+                                            key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))))).close is False:
+            time.sleep(1)
+        else:
+            break
+
+    while True:
+        filename = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
+        old_name_path = os.path.join(carpeta, filename)
+        new_name_path = os.path.join(carpeta, newname)
+        time.sleep(1)
+        break
+
+    while True:
+        time.sleep(1)
+        if filename in old_name_path:
+            os.rename(old_name_path, new_name_path)
+            time.sleep(1)
+
+            if os.path.isfile(old_name_path) == True:
+                if os.stat(old_name_path).st_size == 0 and os.stat(new_name_path).st_size != 0 :
+                    time.sleep(1)
+                    os.remove(old_name_path)
+                    break
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size != 0:
+                    time.sleep(1)
+                    os.remove(old_name_path)
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size == 0:
+                    time.sleep(1)
+                    shutil.copy2(old_name_path,new_name_path)
+                    os.remove(old_name_path)
+                    break
+            elif os.path.isfile(old_name_path) is False:
+                break
+
+def csv_cartola_writer(lista):
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for item in lista:
+            sw.writerow(item)
+
+
+def main():
+
+    driver = firefox_profile()
+    driver.get(web)
+    stop_counter = 0
+
+    for profile in Datos:
+        while True:
+            try:
+                user_login(driver, profile)
+
+                neo_surf_to_cartola_historica(driver)
+                n_cuentas = pick_a_cuenta_first_move(driver)
+                cuenta_empresa = get_empresa_id_from_web(driver)
+                grab_saldo_inicial(driver,  cuenta_empresa)
+                grab_cartola_electronica(driver, cuenta_empresa)
+
+                if n_cuentas > 1 :
+                    pick_a_cuenta_second_move(driver, n_cuentas)
+
+                driver.get(web)
+                break
+            except:
+                stop_counter += 1
+                if stop_counter > 4:
+                    print('Full Program FAIL')
+                    break
+
+    csv_cartola_writer(ls_saldo)
+
+    driver.quit()
+
+if __name__ == '__main__':
+    main()
