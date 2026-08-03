@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import csv
+import time
+import os
+import datetime as dt
+
+from operator import itemgetter
+
+import selenium
+
+from base64 import b64decode
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import ElementNotVisibleException
+from datetime import datetime
+
+from mods import bkning_dates as bkdates
+
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+mp = mypath()
+
+
+def errorHandler(webdriver):
+
+    def warning_art85(driver):
+        # Publicidad o aviso, de articulo 85
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id('mainFrame'))
+        driver.find_element_by_xpath('/html/body/div[1]/div[2]/a[2]').click()
+        return True
+
+    def warning_trusteerxmail(driver):
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_xpath('//frame[@id="mainFrame"]'))
+        driver.find_element_by_xpath('.//a[@id="temporal"]').click()
+        return True
+
+    # Function caller, cada vez que se agrega un handler hay que agregar su nombre en la lista
+    # ls_handlers, para que sean llamados uno tras otro.
+
+    ls_handlers = [warning_art85, warning_trusteerxmail]
+
+    for handler in ls_handlers:
+        if handler(webdriver) is True:
+            break
+    else:
+        raise Exception('No more hanlders - Añade uno')
+
+
+def drop_screenshot(driver):
+    path_to_file = './scrns/screenshot.png'
+    if os.path.exists(path_to_file) is True:
+        version = '2'
+        path_to_file = './scrns/screenshot - %s.png'
+        while os.path.isfile(path_to_file % version):
+            version = int(version) + 1
+        path_to_file = path_to_file % version
+
+    driver.save_screenshot(path_to_file)
+
+#Perfil de Firefox
+ffp = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList",2)
+ffp.set_preference("browser.download.manager.showWhenStarting",False)
+ffp.set_preference("browser.download.dir",mp.Banco('Security'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk","text/html, application/asp-unknown, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8")
+driver = webdriver.Firefox(ffp)
+
+#Perfil
+Usuario       = b'dXNlcm5hbWU='
+PassW         = b'cGFzc3dvcmQ='
+Home          = "https://empresas.bancosecurity.cl/"
+CSVARC        = mp.SaldosCSV()
+
+EmpresaSel    = ['EMP1','EMP2',]
+
+NumCartList   = []
+NumCartListOut= []
+
+class tiempo:
+    def ayerS(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m")
+    def hoyS(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayer(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m/%Y")
+    def hoy(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayerVie(self):
+        RawPast = dt.datetime.today()-dt.timedelta(3)
+        return RawPast.strftime("%d/%m/%Y")
+    def SiLun(self):
+        return dt.datetime.today().weekday()
+ct = tiempo()
+
+#Login
+driver.get(Home)
+driver.find_element_by_id("mrcBtnIngresa").click()
+driver.implicitly_wait(5)
+
+driver.find_element_by_id("lrut").send_keys(b64decode(Usuario).decode('utf-8'))
+driver.find_element_by_id("lpass").send_keys(b64decode(PassW).decode('utf-8'))
+driver.find_element_by_id("lpass").send_keys(Keys.RETURN)
+driver.implicitly_wait(5)
+driver.switch_to.frame(driver.find_element_by_id('mainFrame'))
+driver.switch_to.frame(driver.find_element_by_id('Iframe1'))
+
+driver.implicitly_wait(2)
+
+tablaSel = driver.find_element_by_id('container').find_element_by_tag_name('tbody')
+
+for k in range(4):
+
+    AXemp = itemgetter(k)(EmpresaSel)
+
+    if k == 0 :
+        Filas    = tablaSel.find_elements_by_tag_name("tr")
+        Columnas = Filas[k].find_elements_by_tag_name("td")
+        Empresa  = Columnas[2].find_element_by_tag_name("a").click()
+
+    if k > 0 :
+        driver.switch_to.frame("Iframe1")
+        TablaNew      = driver.find_element_by_class_name("container-fluid")
+        TablaNewOp    = TablaNew.find_element_by_tag_name("tbody")
+        Filas         = TablaNewOp.find_elements_by_tag_name("tr")
+        Col           = Filas[k].find_elements_by_tag_name("td")
+        Col[2].find_element_by_tag_name("a").click()
+        driver.switch_to.default_content()
+
+    while True:
+        #Nuevo Metodo de Busqueda del menu
+        time.sleep(4)
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_id('leftFrame'))
+        except:
+            driver.switch_to.frame(driver.find_element_by_tag_name('iframe'))
+            driver.switch_to.frame(driver.find_element_by_id('leftFrame'))
+
+        #En caso de publicidad
+        while True:
+            time.sleep(3)
+            try:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_id('leftFrame'))
+                driver.find_element_by_xpath('.//div[@Class="PanelClosed" and .//a[text()[contains(.,"Cartola express")]]]').click()
+                break
+            except ElementNotVisibleException:
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_xpath('//frame[@id="mainFrame"]'))
+                driver.find_element_by_xpath('.//a[@id="temporal"]').click()
+
+
+        time.sleep(2)
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id('mainFrame'))
+
+        TablaSaldo  = driver.find_elements_by_tag_name("tr")
+        Opciones2   = TablaSaldo[1].find_elements_by_tag_name("td")
+        AXCuenta    = Opciones2[0].find_element_by_tag_name("a").text
+        Cuenta      = AXCuenta[-5:]
+        SaldoR      = Opciones2[3].find_element_by_tag_name("small").text
+        Saldo       = SaldoR.replace("$","")
+
+
+        #driver.save_screenshot('./old/screenshot.png')
+        drop_screenshot(driver)
+
+        with open(CSVARC, 'a', newline='') as csvfile:
+            sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            sw.writerow([ 'SEC', AXemp, 'SEC-'+Cuenta, Saldo])
+
+        print("%s, SEC-%s, %s" % (AXemp, Cuenta, Saldo))
+        break
+
+    try:
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id('leftFrame'))
+    except:
+        driver.switch_to.frame(driver.find_element_by_tag_name('iframe'))
+        driver.switch_to.frame(driver.find_element_by_id('leftFrame'))
+
+    driver.find_element_by_xpath('.//div[@Class="PanelClosed" and .//a[text()[contains(.,"Cartola histórica")]]]').click()
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_id("mainFrame"))
+
+    #Elegir Mes
+
+    MesHis  = Select(driver.find_element_by_name("fecha"))
+
+    #value mmyyyyy
+
+    if bkdates.live_date().get_date().split("/")[1] == dt.datetime.today().strftime('%m'):
+        MesHis.select_by_index(1)
+    else:
+        MesHis.select_by_index(2)
+
+    Goin    = driver.find_element_by_class_name("ParrafoBtnCen").click()
+
+    #1.2.3
+    try:
+        TablaCartola = driver.find_element_by_class_name("Grid")
+        Filas        = TablaCartola.find_elements_by_tag_name("tr")
+        NumElem      = len(Filas)
+
+        if NumElem > 2:
+            SelCar       = NumElem - 1
+            ColOp        = Filas[SelCar].find_elements_by_tag_name("td")
+            FechaCartola = ColOp[2].text
+
+            if FechaCartola == bkdates.live_date().get_date():
+
+                DlTxT = ColOp[3].find_elements_by_tag_name("a")
+                DlTxT[1].click()
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id("topFrame"))
+
+        Change = driver.find_element_by_class_name("empresa")
+        Change.find_element_by_tag_name("a").click()
+        time.sleep(2)
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id("mainFrame"))
+
+    except NoSuchElementException:
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id("topFrame"))
+
+        Change = driver.find_element_by_class_name("empresa")
+        Change.find_element_by_tag_name("a").click()
+        driver.switch_to.default_content()
+
+driver.close()
+    #:3
