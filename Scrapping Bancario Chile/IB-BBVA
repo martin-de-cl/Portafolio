@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import csv
+import time
+import os
+import datetime as dt
+
+from operator import itemgetter
+from selenium import webdriver
+from selenium.webdriver.support.ui import Select
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import ElementNotVisibleException
+from selenium.common.exceptions import StaleElementReferenceException
+from base64 import b64decode
+from mods import bkning_dates
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-15]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-15]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+
+class tiempo:
+    def ayerS(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m")
+    def hoyS(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayerVie(self):
+        RawPast = dt.datetime.today()-dt.timedelta(3)
+        return RawPast.strftime("%d-%m-%y")
+    def ayer(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d-%m-%y")
+    def minus_two_weeks(self):
+        rawpast = dt.datetime.today()-dt.timedelta(14)
+        return  rawpast.strftime('%d-%m-%y')
+    def hoy(self):
+        return dt.datetime.today().strftime("%d-%m-%y")
+    def aweek(self):
+        time = dt.datetime.today()-dt.timedelta(8)
+        return time.strftime('%d-%m-%y')
+    def aweekVie(self):
+        time = dt.datetime.today()-dt.timedelta(10)
+        return time.strftime('%d-%m-%y')
+    def diaindex(self):
+        return dt.datetime.today().weekday()
+mp = mypath()
+ct = tiempo()
+
+#Perfil de Firefox
+ffp = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList",2)
+ffp.set_preference("browser.download.manager.showWhenStarting",False)
+ffp.set_preference("browser.download.dir",mp.Banco('BBVA'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                   "text/rtf, text/rtf;charset=ISO-8859-1, text/plain, text/csv")
+driver = webdriver.Firefox(ffp)
+
+#login
+Cuentas  = ['11111','22222','33333']
+Empresa  = ['Rutparcial1(str)','Rutparcial2(str)','Rutparcial3(str)']
+
+EmpSig   = ['Sigla1','Sigla2','Sigla3']
+rut      = b'dXNlcm5hbWU='
+passw    = b'cGFzc3dvcmQ='
+web      = "https://www.bbvanetcash.cl/local_pibee/indexPibee.html"
+CSVARC   = mp.SaldosCSV()
+tuple_csv = []
+
+compare_date = dt.datetime.strptime(bkning_dates.live_date().get_date(), '%d/%m/%Y').strftime('%d-%m-%y')
+
+
+def main():
+    for k in range(3):
+        driver.get(web)
+        driver.maximize_window()
+        driver.implicitly_wait(3)
+        AXempre = itemgetter(k)(EmpSig)
+        AXvar = int(itemgetter(k)(Empresa))
+        Var = itemgetter(k)(Cuentas)
+        try:
+            # id's de la Web Nueva
+            driver.find_element_by_id('rut-validacion-empresa').send_keys(AXvar)
+            driver.find_element_by_id('rut-validacion').send_keys(rut)
+            driver.find_element_by_id('clave-validacion').send_keys(passw)
+            driver.find_element_by_xpath('//input[@Class="boton boton-ingresar-acceso"]').click()
+        except NoSuchElementException:
+            # id's de la Web Antigua
+            driver.find_element_by_id("empr").send_keys(AXvar)
+            driver.find_element_by_id("user").send_keys(rut)
+            driver.find_element_by_id("pwd").send_keys(passw)
+            driver.find_element_by_name("submit").click()
+
+        #Navegacion a los objetivos - Saldo diario
+        condicion = False
+        stop_counter = 0
+        while condicion is False:
+            driver.implicitly_wait(4)
+            try:
+                time.sleep(1)
+                menu = driver.find_element_by_id('columnaMenu')
+                todas_las_opciones_li = menu.find_element_by_xpath(
+                    '//ul[@class="menuLateral"]').find_elements_by_tag_name('li')
+                for opcion in todas_las_opciones_li:
+                    if 'Saldo' in opcion.text:
+                        #print(opcion.text)
+                        opcion.find_element_by_tag_name('a').click()
+                        condicion = True
+                        break
+
+            except ElementNotVisibleException:
+                stop_counter += 1
+                time.sleep(1)
+                if stop_counter == 10:
+                    print('La ruta a los saldos es inavegable - Revisar!')
+                    break
+
+        # [+] contenedor principal
+        driver.implicitly_wait(5)
+        driver.switch_to.frame(driver.find_element_by_xpath('//div[@id="kyop-central-load-area-container"]/iframe'))
+
+        condicion = False
+        if AXvar != 11111: #11111 es un place holder para solucionar un error en el sitio
+            stop_counter = 0
+            while condicion is False:
+                try:
+                    try:
+                        saldo = driver.find_element_by_xpath('//table[@id="tablaResumen-0-3"]/tbody/tr[3]/td[2]').text
+                    except StaleElementReferenceException:
+                        time.sleep(1)
+                        driver.switch_to.default_content()
+                        driver.switch_to.frame(
+                            driver.find_element_by_xpath('//div[@id="kyop-central-load-area-container"]/iframe'))
+                        saldo = driver.find_element_by_xpath('//table[@id="tablaResumen-0-3"]/tbody/tr[3]/td[2]').text
+                    #print(saldo)
+                    if '$ 0' in saldo:
+
+                        time.sleep(1)
+                    elif '$ 0' not in saldo:
+                        print('%s, %s, %s'% ( AXempre, 'BBVA-' + Var, str(' '+saldo)))
+                        tuple_csv.append(('BBVA', AXempre, 'BBVA-' + Var, saldo.replace('$', '')))
+                        condicion = True
+                        break
+                    else:
+                        print('JavaScript no ha procesado el saldo')
+                except ElementNotVisibleException:
+                    stop_counter += 1
+                    time.sleep(1)
+                    if stop_counter == 10:
+                        print('Elemento no visible, intentos maximos alcanzados.')
+                        break
+        else:
+            stop_counter = 0
+            while condicion is False:
+                try:
+                    driver.switch_to.default_content()
+                    driver.switch_to.frame(
+                        driver.find_element_by_xpath('//div[@id="kyop-central-load-area-container"]/iframe'))
+
+                    tabla = driver.find_element_by_xpath(
+                        './/div[@Class="container-listado-empresas border_empresas_tabla"]')
+                    filas = tabla.find_elements_by_xpath(
+                        './/div[@Class="container-acordeon-valores empresauno container_vistas_por_cuentas ng-scope in collapse"]')
+                    for fila in filas:
+                        account = fila.find_element_by_xpath('./div/div/span').text.split(' | ')[0][-5:]
+                        money = fila.find_element_by_xpath('./div/div[2]/p').text.replace('US$', '').replace('$','').replace('.','')
+                        tuple_csv.append(('BBVA', AXempre, 'BBVA-' + account, money))
+                        print("%s ,%s ,%s"% ( AXempre, 'BBVA-' + account, fila.find_element_by_xpath('./div/div[2]/p').text))
+                    condicion = True
+                    break
+
+                except ElementNotVisibleException:
+                    stop_counter += 1
+                    time.sleep(1)
+                    if stop_counter == 10:
+                        print('Multiples cuentas no encontradas')
+                        break
+
+                except StaleElementReferenceException:
+                    stop_counter += 1
+                    time.sleep(1)
+                    if stop_counter == 10:
+                        print('Problemas en las refencias del objeto')
+                        break
+
+
+        #Nos vamos a descargar la cartola
+        condicion = False
+        stop_counter = 0
+        while condicion is False:
+
+            try:
+                try:
+                    driver.switch_to.default_content()
+                    driver.switch_to.frame(driver.find_element_by_id('kyop-central-load-area'))
+                    menu = driver.find_element_by_id('columnaMenu')
+                except NoSuchElementException:
+                    driver.switch_to.default_content()
+                    menu = driver.find_element_by_id('columnaMenu')
+                todos_los_li = menu.find_element_by_xpath(
+                    '//ul[@class="menuLateral"]').find_elements_by_tag_name('li')
+                for li in todos_los_li:
+                    if 'Utilidad' in li.text:
+                        #print(li.text)
+                        li.find_element_by_tag_name('div').click()
+                        todos_los_div = menu.find_element_by_xpath(
+                            '//ul[@class="menuLateral"]').find_elements_by_xpath('.//div/ul/li')
+                        for div in todos_los_div:
+                            if 'Zona de' in div.text:
+                                #print(div.text)
+                                driver.execute_script("window.scrollTo(0, 100);")
+                                driver.implicitly_wait(2)
+                                div.find_element_by_xpath('./..').click()
+                                condicion = True
+                                break
+            except ElementNotVisibleException:
+                stop_counter += 1
+                time.sleep(1)
+                if stop_counter == 10:
+                    print('La ruta a la seccion de descargas es inavegable - Revisar!')
+                    break
+
+        stop_counter = 0
+        stop_counter_inner = 0
+        while True:
+            try:
+                # Busca la tabla de descargas
+                while True:
+                    try:
+                        time.sleep(1)
+                        driver.switch_to.default_content()
+                        driver.find_element_by_xpath('//a[text()[contains(.,"Cartola Magnética")]]').click()
+
+                        #print('con iframe')
+                        break
+                    except NoSuchElementException:
+                        time.sleep(2)
+                        stop_counter_inner += 1
+                        if stop_counter_inner > 10:
+                            raise Exception('No se pudo encontrar la tabla de descargas')
+
+                driver.implicitly_wait(2)
+                driver.switch_to.frame(driver.find_element_by_xpath(
+                    '//div[@id="kyop-central-load-area-container"]/iframe'))
+                tabla_descargas = driver.find_element_by_xpath('//div[@class="caja_tabla"]/table/tbody')
+                break
+
+            except NoSuchElementException:
+                stop_counter += 1
+                time.sleep(1)
+                if stop_counter == 10:
+                    print('No se encontro un listado para descargar. - Revisar!')
+                    raise Exception(NoSuchElementException)
+                    #break
+
+        tabla_filas = tabla_descargas.find_elements_by_tag_name('tr')
+
+        for i in reversed(range(len(tabla_filas))):
+            # Metodo para elegir formato y iniciar la descarga
+            if compare_date in tabla_filas[i].find_element_by_tag_name('td').text:
+                tabla_filas[i].find_element_by_tag_name('td').find_element_by_name('cartolas').click()
+                driver.implicitly_wait(2)
+                driver.find_element_by_xpath('//div[@class="caja_tabla"]/div[2]/input[2]').click()
+                combo_box = Select(driver.find_element_by_xpath('//*[@id="selCombo"]'))
+                combo_box.select_by_index(2)
+                driver.find_element_by_id('btnAceptar').click()
+                time.sleep(2)
+                break
+        driver.switch_to.default_content()
+    driver.quit()
+
+if __name__ == '__main__':
+    main()
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for line in tuple_csv:
+            sw.writerow(line)
