@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import csv
+import time
+import sys
+import os
+import datetime as dt
+import shutil
+from base64 import b64decode
+
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchFrameException
+from selenium.common.exceptions import ElementNotVisibleException
+from selenium.common.exceptions import StaleElementReferenceException
+
+from mods import bkning_dates
+
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-15]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-15]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+
+def tiny_watch_v2(newname, carpeta):
+    time.sleep(1)
+    while True:
+        try:
+            if 'part' in max([f for f in os.listdir(carpeta)],
+                             key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))):
+                time.sleep(1)
+            elif open(os.path.join(carpeta, max([f for f in os.listdir(carpeta)],
+                                                key=lambda xa: os.path.getctime(
+                                                    os.path.join(carpeta, xa))))).close is False:
+                time.sleep(1)
+            else:
+                break
+        except ValueError:
+            time.sleep(1)
+
+    while True:
+        filename = max([f for f in os.listdir(carpeta)],
+                       key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
+        old_name_path = os.path.join(carpeta, filename)
+        new_name_path = os.path.join(carpeta, newname)
+        break
+
+    while True:
+        if filename in old_name_path:
+            time.sleep(2)
+            os.rename(old_name_path, new_name_path)
+            time.sleep(0.5)
+
+            if os.path.isfile(old_name_path) == True:
+                if os.stat(old_name_path).st_size == 0 and os.stat(new_name_path).st_size != 0:
+                    os.remove(old_name_path)
+                    break
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size != 0:
+                    os.remove(old_name_path)
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size == 0:
+                    shutil.copy2(old_name_path, new_name_path)
+                    os.remove(old_name_path)
+                    break
+            elif os.path.isfile(old_name_path) is False:
+                break
+
+def time_to_download():
+    if dt.datetime.today().weekday() == 0:
+        return (dt.datetime.today() - dt.timedelta(3)).strftime('%d/%m/%Y')
+    else:
+        return (dt.datetime.today()-dt.timedelta(1)).strftime('%d/%m/%Y')
+        #return (dt.datetime.today() - dt.timedelta(1)).strftime('%d/%m/%Y')
+
+usr = b'dXNlcm5hbWU=' 
+psw   = b'cGFzc3dvcmQ='
+web = "https://www.officebanking.cl/default.htm"
+sigla_emp = ['AAA','BBB'] # Siglas para informe
+mp = mypath()
+CSVARC = mp.SaldosCSV()
+
+ffp = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList",2)
+ffp.set_preference("browser.download.manager.showWhenStarting",False)
+ffp.set_preference("browser.download.dir",mp.Banco('Santander'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                   "bad/type, text/plain, text/csv, text/list, text/forced_download")
+driver = webdriver.Firefox(ffp)
+
+
+def login(home_site):
+    driver.get(home_site)
+    driver.maximize_window()
+    driver.switch_to.default_content()
+    driver.find_element_by_id("rut").send_keys(b64decode(usr).decode('utf-8'))
+    driver.find_element_by_id("pass").send_keys(b64decode(psw).decode('utf-8'))
+    try:
+        driver.find_element_by_id("image1").click()
+    except NoSuchElementException:
+        driver.find_element_by_id('botonenvio').click()
+
+
+def cuantas_empresas():
+    ls_emp_rut = []
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('derecho'))
+    tabla = driver.find_element_by_xpath('//div[@id="tablalista"]/table/tbody')
+    ele_empresa = tabla.find_elements_by_tag_name('tr')
+
+    for element in ele_empresa:
+        ls_emp_rut.append(element.find_element_by_xpath('./td[4]').text)
+
+    return ls_emp_rut
+
+def pick_a_empresa(rut_empresa):
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('derecho'))
+    tabla = driver.find_element_by_xpath('//div[@id="tablalista"]/table/tbody')
+    ele_empresa = tabla.find_elements_by_tag_name('tr')
+    for element in ele_empresa:
+        if rut_empresa == element.find_element_by_xpath('./td[4]').text:
+            try:
+                element.find_element_by_xpath('./td[1]/input').click()
+            except:
+                element.find_element_by_xpath('./td[1]').click()
+            break
+
+    driver.find_element_by_id("botones").find_element_by_tag_name('a').click()
+
+def surf_cartola_historica():
+
+    stop_counter = 0
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('izquierdo'))
+            driver.find_element_by_xpath('//*[@id="test"]/table/tbody/tr[1]/td').click()
+            break
+        except NoSuchElementException:
+            time.sleep(1)
+
+    while True:
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(driver.find_element_by_name('izquierdo'))
+            if driver.find_element_by_xpath('//*[@id="test"]/table/tbody/tr[3]/td').text in 'Ultima Cartola':
+                time.sleep(1)
+                driver.find_element_by_xpath('//*[@id="test"]/table/tbody/tr[3]/td/font/b/a').click()
+                break
+        except NoSuchElementException:
+            if stop_counter > 10:
+                print('No Cartolas')
+                break
+            else:
+                time.sleep(1)
+                stop_counter += 1
+
+def get_saldos(sigla):
+
+    def waiter():
+        stop_counter = 0
+        while True:
+            try:
+                if '/' in driver.find_element_by_xpath('//*[@id="1"]/div/div/ul/li[3]').text:
+                    time.sleep(1)
+                    break
+                else:
+                    #print('waiting for site to load')
+                    time.sleep(1)
+            except NoSuchElementException:
+                time.sleep(1)
+
+                if 'intente mas tarde' in driver.find_element_by_xpath('.//div[@Class="titulo-error"]/h3/span').text:
+                    surf_cartola_historica()
+                    stop_counter += 1
+                    if stop_counter > 10:
+                        raise Exception('Los servicioes de la pagina no estan disponibles')
+
+    def get_cartola(sigla, moneda):
+        stop_counter = 0
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_id('derecho'))
+
+        cargos = driver.find_element_by_xpath('//*[@id="2"]/table/tbody/tr/td[2]').text
+        abonos = driver.find_element_by_xpath('//*[@id="2"]/table/tbody/tr/td[3]').text
+
+        if cargos not in abonos:
+            #if time_to_download() in driver.find_element_by_xpath('//*[@id="1"]/div/div/ul/li[3]').text:
+            if bkning_dates.live_date().get_date() in driver.find_element_by_xpath('//*[@id="1"]/div/div/ul/li[3]').text:
+                while True:
+                    try:
+                        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+                        driver.find_element_by_xpath('//*[@id="3"]/header/div/a[1]').click()
+                        time.sleep(2)
+
+                        driver.find_element_by_xpath('//body/div[@Class="popover fade bottom in"]'
+                                                     '/div[2]/div/ul/li[3]/a[@id="downloadTXTLink"]').click()
+
+                        cuenta = driver.find_element_by_xpath(
+                            '//*[@id="1"]/div/ul[1]/li[2]/div/button/span[1]').text.replace('-', '')[-5:]
+                        driver.implicitly_wait(3)
+                        tiny_watch_v2(str(sigla +'.'+'1'+'.'+moneda+'.'+cuenta), mp.Banco('Santander'))
+                        break
+                    except NoSuchElementException:
+                        if stop_counter > 10:
+                            print('Couldn\'t Fetch Cartola')
+                            break
+                        else:
+                            time.sleep(1)
+                            stop_counter += 1
+
+    ls_cuentas_x_emp = []
+    ls_saldos = []
+    stop_counter_fin = 0
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_id('derecho'))
+
+    waiter()
+    #print('go')
+
+    cuenta_picker = driver.find_elements_by_xpath('//*[@id="1"]/div/ul[1]/li[2]/div/div/ul/li')
+
+    for cuentas_emp in cuenta_picker:
+        ls_cuentas_x_emp.append(cuentas_emp.find_element_by_xpath('./a/span[1]').get_attribute("innerHTML"))
+    #print(ls_cuentas_x_emp)
+
+    for opcion in ls_cuentas_x_emp:
+
+        if len(ls_cuentas_x_emp) > 1:
+            driver.implicitly_wait(2)
+            sel_opt = driver.find_elements_by_xpath('//*[@id="1"]/div/ul[1]/li[2]/div/div/ul/li')
+
+            for opt in sel_opt:
+                if opcion in opt.find_element_by_xpath('./a/span[1]').get_attribute("innerHTML"):
+                    while True:
+                        try:
+                            #opt.click()
+                            driver.find_element_by_xpath('//*[@id="1"]/div/ul[1]/li[2]/div/button/span[2]').click()
+                            time.sleep(2)
+                            opt.click()
+                            #pensar en cambiar el tiempo de espera
+                            time.sleep(4)
+                            break
+                        except ElementNotVisibleException:
+                            time.sleep(1)
+                            #stop_counter_fin +=1
+                            #print('uno')
+                            #if stop_counter_fin > 15:
+                            #    surf_cartola_historica()
+                            #    print('dos')
+                    break
+
+            waiter()
+
+        saldo = driver.find_element_by_xpath('//*[@id="2"]/table/tbody/tr/td[4]').text
+
+        if 'USD' in saldo:
+            moneda = 'U'
+            moneda_file = 'usd'
+        else:
+            moneda = ''
+            moneda_file = 'clp'
+        ls_saldos.append(('SAN', sigla,
+                          'SAN-' + opcion.replace('-','')[-5:]+moneda,
+                          saldo.replace('USD', '').replace('$', '').replace('.', '')))
+
+        print("%s, %s, %s" % (sigla, 'SAN-' + opcion.replace('-','')[-5:]+moneda,
+               saldo))
+
+        get_cartola(sigla, moneda_file)
+        driver.execute_script("window.scrollTo(0, 0);")
+
+    return ls_saldos
+
+def surf_back_to_empresas():
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_id('arriba'))
+    driver.find_element_by_xpath('//*[@id="botonera"]/table/tbody/tr/td[2]/a').click()
+
+def drop_abonos_csv(CSVARC, tuple_csv):
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for empresa in tuple_csv:
+            for line in empresa:
+                sw.writerow(line)
+
+
+def main():
+
+    login(web)
+    ls_todas_las_empresas = cuantas_empresas()
+    ls_saldos = []
+
+    stop_counter = 0
+
+    for rut_empresa, sigla in zip(ls_todas_las_empresas, sigla_emp):
+        while True:
+            try:
+                pick_a_empresa(rut_empresa)
+                surf_cartola_historica()
+                ls_saldos.append(get_saldos(sigla))
+                surf_back_to_empresas()
+                break
+
+            except NoSuchElementException:
+                login(web)
+                if stop_counter > 10:
+                    raise Exception('La pagina tiene problemas')
+
+    driver.quit()
+    #print(ls_saldos) #<- Debug
+    drop_abonos_csv(CSVARC, ls_saldos)
+
+def debug_main():
+
+    login(web)
+    ls_todas_las_empresas = cuantas_empresas()
+
+    for rut_empresa, sigla in zip(ls_todas_las_empresas, sigla_emp):
+        while True:
+            pass
+
+if __name__ == '__main__':
+    #print(bkning_dates.live_date().get_date())
+    main()
