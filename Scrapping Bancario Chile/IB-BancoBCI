@@ -1,0 +1,455 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import csv
+import time
+
+import datetime as dt
+import ast
+from win32api import GetSystemMetrics as sysmet
+from operator import itemgetter
+
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+
+from selenium.common.exceptions import NoSuchFrameException
+from selenium.common.exceptions import NoSuchElementException
+from base64 import b64decode
+
+from mods import bkning_dates
+from mods import path_handler
+
+home_web = 'http://www.bci.cl/empresas/'
+
+# BCI asigna cuentas de empresas a diferentes usuarios por tanto para un grupo empresarial extenso
+# existe la posibilidad de usar mas de un usuario para cubrir las cuentas de todas las empresas
+# Estructura:
+# [
+#   (RUT-USUARIO, CLAVE USUARIO, (SIGLA1, SIGLA2,...),(RUTEMPRESA1, RUTEMPRESA2, ...)), 
+#   (RUTUSER2, CLAVEUSER2,(SIGLA21, SIGLA22,...),(RUT21,RUT22,...)),
+# ]
+
+credenciales = [('22222222-2', 'clave',
+                 ('sigla1', 'sigla2'),
+                 ('99999999-9', '99999998-9')
+                 ),
+                ('11111111-1', 'clave',
+                 ('sigla21', 'sigla22'),
+                 ('88888888-8', '88888887-8'))]
+
+def webdriver_object():
+    # TODO: Cambiar la ruta y llamar la libreria pathhandler, por ahora es la ruta misma de los scripts
+
+    ffp = webdriver.FirefoxProfile()
+    ffp.set_preference("browser.download.folderList", 2)
+    ffp.set_preference("browser.download.manager.showWhenStarting", False)
+    ffp.set_preference("browser.download.dir", '.\\RevCuadraje\\res\\')  # <- Aqui
+    ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                       "application/x-www-form-urlencoded, text/html, application/x-download, application/xhtml+xml,"
+                       " application/xml;q=0.9, */*;q=0.8")
+    return webdriver.Firefox(ffp)
+
+
+def surf_to_home(driver):
+
+    driver.get(home_web)
+
+    pc_width_res = sysmet(0)
+    pc_height_res = sysmet(1)
+
+    ff_width_res = driver.get_window_size()['width']
+    ff_height_res = driver.get_window_size()['height']
+
+    if int(pc_width_res)/int(ff_width_res) != 1 and int(pc_height_res)/int(ff_height_res) != 1:
+        driver.maximize_window()
+
+
+def login(driver, user):
+    usr = b64decode(itemgetter(0)(user)).decode('utf-8') 
+    psw = b64decode(itemgetter(1)(user)).decode('utf-8') 
+
+    def old_login(rut, password):
+
+        driver.switch_to.default_content()
+        driver.find_element_by_name('rut_aux').send_keys(rut)
+        driver.find_element_by_name('clave_aux').send_keys(password)
+
+        try:
+            driver.find_element_by_xpath('/html/body/div[4]/div[2]/div[2]/fieldset/div[1]/form/p[3]/input').click()
+        except NoSuchElementException:
+            driver.find_element_by_id('login').find_element_by_clas_name('centrar_btn_ingreso').click()
+
+    def new_login(rut, pasword):
+        driver.find_element_by_id('nav-menu').find_element_by_class_name('right-menu').click()
+        driver.find_element_by_id('container-login').find_element_by_id('rut_aux').send_keys(rut)
+        driver.find_element_by_id('container-login').find_element_by_id('clave_aux').send_keys(pasword)
+        driver.find_element_by_id('container-login').find_element_by_id('clave_aux').send_keys(Keys.RETURN)
+
+    try:
+        old_login(usr, psw)
+    except:
+        new_login(usr, psw)
+
+
+def select_empresa(driver, rut_emp):
+
+    stop_counter = 0
+
+    driver.switch_to.default_content()
+    Tabla = driver.find_element_by_id("conveniosForm:lista")
+    Tbody = Tabla.find_element_by_tag_name("tbody")
+    Tr_list = Tbody.find_elements_by_tag_name("tr")
+    for tr in Tr_list:
+        print(tr.find_elements_by_tag_name('td')[2].text)
+        print(rut_emp)
+        while '-' not in tr.find_elements_by_tag_name('td')[2].text:
+            time.sleep(1)
+        time.sleep(1)
+
+        if tr.find_elements_by_tag_name('td')[2].text == rut_emp:
+            try:
+                tr.find_elements_by_tag_name('td')[0].find_element_by_tag_name("a").click()
+                break
+            except NoSuchElementException:
+                time.sleep(1)
+                stop_counter += 1
+                if stop_counter > 10:
+                    raise Exception('La tabla tiene problemas en el rut %s', rut_emp)
+
+
+def check_for_pop_windows(driver, web_where_to_check):
+
+    print(web_where_to_check)
+    len(web_where_to_check)
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_name('content'))
+
+    w_base = driver.window_handles[0]
+
+    body = driver.find_element_by_tag_name('body')
+    driver.implicitly_wait(2)
+    body.send_keys(Keys.CONTROL + 'n')
+    driver.implicitly_wait(2)
+
+    Vnew = driver.window_handles[1]
+    driver.switch_to.window(Vnew)
+
+    driver.get(web_where_to_check)
+
+    try:
+        driver.switch_to.frame("detalle")
+        driver.close()
+        driver.switch_to.window(w_base)
+        return True
+    except NoSuchFrameException:
+        driver.close()
+        driver.switch_to.window(w_base)
+        return False
+
+
+def get_hard_links(sigla_empresa):
+    with open('./mods/hard_links_bci','r') as link_file:
+        data = link_file.read().replace('\n','').replace('    ','')
+    links_dict = ast.literal_eval(data)
+
+    ls_saldos_clp = links_dict[sigla_empresa]['CLP']
+
+    try:
+        ls_saldos_usd = links_dict[sigla_empresa]['USD']
+
+    except KeyError:
+        ls_saldos_usd = None
+
+    ls_link_dl = links_dict[sigla_empresa]['Download']
+
+    int_cuentas_counter = int(links_dict[sigla_empresa]['Ccount'])
+
+    return (ls_saldos_clp, ls_saldos_usd, ls_link_dl, int_cuentas_counter)
+
+
+def get_saldos_clp(driver, ls_hl_pesos, frames):
+
+    def busca_saldos(url):
+        contador = 0
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_name('content'))
+
+        w_base = driver.window_handles[0]
+
+        body = driver.find_element_by_tag_name('body')
+        body.send_keys(Keys.CONTROL + 'n')
+        while True:
+            try:
+                w_popu = driver.window_handles[1]
+                break
+            except IndexError:
+                contador += 1
+                if contador > 5:
+                    raise Exception('Windows Handle error, CLP')
+
+        driver.switch_to.window(w_popu)
+
+        driver.get(url)
+        try:
+            driver.switch_to.frame("detalle")
+        except NoSuchFrameException:
+            driver.switch_to.frame("content")
+
+        cuenta = driver.find_element_by_xpath(
+            '//*[@id="contenidoPrint"]/table[1]/tbody/tr[2]/td').text[13:]
+        saldo  = driver.find_element_by_xpath(
+            '//*[@id="contenidoPrint"]/table[5]/tbody/tr/td/table[1]/tbody/tr[2]/td[2]').text.replace('$','')
+
+        print('%s, %s' % (cuenta,saldo))
+        driver.close()
+        driver.switch_to.window(w_base)
+
+
+    if ls_hl_pesos is list or ls_hl_pesos is tuple:
+        for cuenta in ls_hl_pesos:
+            busca_saldos(cuenta)
+    else:
+        busca_saldos(ls_hl_pesos)
+
+
+def get_saldos_usd(driver, ls_hl_usd, frames, sigla_emp):
+
+    def busca_usd_saldos_monex(url):
+
+        contador = 0
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_name('content'))
+
+        w_base = driver.window_handles[0]
+
+        body = driver.find_element_by_tag_name('body')
+        body.send_keys(Keys.CONTROL + 'n')
+        while True:
+            try:
+                w_popu = driver.window_handles[1]
+                time.sleep(0.5)
+                break
+            except:
+                contador += 1
+                if contador > 5:
+                    raise Exception('No se encuentra el saldo de USD')
+
+        driver.switch_to.window(w_popu)
+
+        driver.get(url)
+
+        if frames is True:
+            driver.switch_to.frame(driver.find_element_by_name('content'))
+        elif frames is False:
+            driver.switch_to.frame(driver.find_element_by_name('content'))
+            driver.switch_to.frame(driver.find_element_by_name('principal'))
+        else:
+            raise Exception('No se encontraron ninguno de los iframe principal')
+
+        driver.close()
+        driver.switch_to.window(w_base)
+
+    def busca_usd_saldos(url):
+
+        contador = 0
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_name('content'))
+
+        w_base = driver.window_handles[0]
+
+        body = driver.find_element_by_tag_name('body')
+        body.send_keys(Keys.CONTROL + 'n')
+        while True:
+            try:
+                w_popu = driver.window_handles[1]
+                break
+            except:
+                time.sleep(0.2)
+                contador += 1
+                if contador > 5:
+                    raise Exception('Window Handle Exception USD')
+        driver.switch_to.window(w_popu)
+
+        driver.get(url)
+
+        if frames is True:
+            driver.switch_to.frame(driver.find_element_by_name('content'))
+        elif frames is False:
+            driver.switch_to.frame(driver.find_element_by_name('content'))
+            driver.switch_to.frame(driver.find_element_by_name('principal'))
+        else:
+            raise Exception('No se encontraron ninguno de los frames principales')
+
+        cuenta = driver.find_element_by_xpath(
+            '/html/body/div[1]/div[10]/div/table/tbody/tr[1]/td[1]').text[17:]
+        saldo  = driver.find_element_by_xpath(
+            '/html/body/div[1]/div[10]/div/table/tbody/tr[1]/td[2]').text.replace('USD','')
+
+        driver.close()
+        driver.switch_to.window(w_base)
+        return (sigla, cuenta, saldo)
+
+
+    if ls_hl_usd != 'None':
+        if ls_hl_usd is list or ls_hl_usd is tuple:
+            for cuenta_usd in ls_hl_usd:
+                return busca_usd_saldos(cuenta_usd)
+        else:
+            if sigla_emp != 'sigla2':  # Parche para ir a cartola MONEX
+                return busca_usd_saldos(ls_hl_usd)
+            else:
+
+                url_mai = 'https://bel.bci.cl/belwls/obtieneCtasCtes?1523971445854&MENU=' \
+                          'MENU_ITEMS_CUENTA_CORRIENTE_EN_MONEX_24&TICU=CCX&CONSULTA_CCX=1'
+                return busca_usd_saldos_monex(url_mai)
+
+    else:
+        print('Returned List as None - get_saldos_usd')
+
+
+def get_cartolas(driver,hard_link_to_cartola, link_cuenta_usd, criterios, frames):
+
+    def is_it_enough(fecha_de_cartolas, ultimo_dia_habil):
+        # Busca dentro de un periodo de dos semanas, para agilizar la busqueda en caso
+        # de que hayan muchos pendientes.
+        temp_date = dt.datetime.strptime(fecha_de_cartolas,'%d/%m/%Y')
+        today_date = dt.datetime.strptime(ultimo_dia_habil,'%d/%m/%Y')
+        print('%s, %s'%(temp_date, today_date))
+        if int((today_date - temp_date).days) >= 14:
+            return False
+        else:
+            return True
+
+    # la fecha de bci es la del día de hoy y la de lunes la del sabado
+    last_work_day = dt.datetime.today().strftime('%d/%m/%Y')
+
+    driver.switch_to.default_content()
+    vold = driver.window_handles[0]
+    driver.find_element_by_tag_name('html').send_keys(Keys.CONTROL + 'n')
+    vnew = driver.window_handles[1]
+    driver.switch_to.window(vnew)
+    driver.get(hard_link_to_cartola)
+
+    if frames is False:
+        driver.switch_to.frame('content')
+    else:
+        driver.switch_to.frame('detalle')
+
+    tabla_completa = driver.find_element_by_xpath('//*[@id="contenido"]/form/table[6]/tbody')
+
+    for line in tabla_completa.find_elements_by_tag_name('tr')[1:]:
+
+        if last_work_day in line.find_elements_by_tag_name('td')[1].text:
+            if 'CTD' in line.find_elements_by_tag_name('td')[2].text:
+
+                line.find_elements_by_tag_name('td')[0].find_element_by_xpath('.//*[@id="nombreArchivos"]').click()
+                driver.find_element_by_xpath('//*[@id="recibir"]').click()
+                line.find_elements_by_tag_name('td')[0].find_element_by_xpath('.//*[@id="nombreArchivos"]').click()
+                # pass
+                # TODO: Terminar el metodo de descarga y considerar el n de cartolas
+
+            elif 'CTXM' in line.find_elements_by_tag_name('td')[2].text:
+                line.find_elements_by_tag_name('td')[0].find_element_by_xpath('.//*[@id="nombreArchivos"]').click()
+                driver.find_element_by_xpath('//*[@id="recibir"]').click()
+                line.find_elements_by_tag_name('td')[0].find_element_by_xpath('.//*[@id="nombreArchivos"]').click()
+
+            elif is_it_enough(line.find_elements_by_tag_name('td')[1].text, last_work_day) is True:
+                pass
+
+    driver.close()
+    driver.switch_to.window(vold)
+
+def surf_to_cartolas(driver):
+    driver.switch_to.default_content()
+    driver.find_element_by_xpath()
+
+def surf_back_to_empresas(driver):
+
+    driver.switch_to.default_content()
+    driver.switch_to.frame(driver.find_element_by_xpath('//*[@name="tophead"]'))
+    driver.switch_to.frame(driver.find_element_by_xpath('.//iframe[@name="framehost"]'))
+    ele = driver.find_element_by_xpath('//form[@id="encabezadoform"]/div[@id="header"]/div[@id="cont_usuario"]/p[2]/span/a')
+
+    ele.click()
+
+def drop_saldos_to_csv(ls_con_saldos):
+
+    CSVARC = ''
+    AXempresas = ''
+    NumCta = ''
+    SaldoC = ''
+
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';',quotechar='|',quoting=csv.QUOTE_MINIMAL)
+        sw.writerow(['BCI', AXempresas, 'BCI-'+NumCta, SaldoC])
+
+def open_focus_window(driver, window_count=2):
+    contador = 0
+    old_name = driver.window_handles[0]
+    driver.find_element_by_tag_name('html').send_keys(Keys.CONTROL + 'n')
+
+    while True:
+        try:
+            new_name = driver.window_handles[1]
+            if len(driver.window_handles) == window_count:
+                break
+        except:
+            contador += 1
+            time.sleep(2)
+            if contador > 5:
+                raise Exception('Problemas al abrir ventanas')
+
+    driver.switch_to.window(new_name)
+
+    return (old_name, new_name)
+
+
+def ERROR_Handler_empty_warning(driver):
+    driver.switch_to.default_content()
+
+    if driver.find_element_by_xpath('//table[1]/tbody/tr/td[2]/img[@src="/bcinetwls/common/images/alerta2.gif"]'):
+        if driver.find_element_by_xpath('//img[@src="/bcinetwls/common/images/volver.gif"]'):
+            return True
+    else:
+        return False
+
+
+if __name__ == '__main__':
+
+    did_we_check_for_frames = False
+    nav_style = False
+    driver = webdriver_object()
+    driver.implicitly_wait(5)
+
+    surf_to_home(driver)
+
+    for user in credenciales:
+
+        login(driver,user)
+        Siglas_emp = itemgetter(2)(user)
+        ruts_emp = itemgetter(3)(user)
+
+        for sigla, rut in zip(Siglas_emp, ruts_emp):
+
+            select_empresa(driver, rut)
+
+            ls_clp_saldos     = get_hard_links(sigla)[0]
+            ls_usd_saldos     = get_hard_links(sigla)[1]
+            link_to_downloads = get_hard_links(sigla)[2]
+            n_de_cartolas_dl  = get_hard_links(sigla)[3]
+
+            if did_we_check_for_frames is False:
+                nav_style = check_for_pop_windows(driver, ls_clp_saldos)
+                did_we_check_for_frames = True
+
+            ls_4_csv_clp = get_saldos_clp(driver,ls_clp_saldos, nav_style)
+            ls_4_csv_usd = get_saldos_usd(driver, ls_usd_saldos, nav_style, sigla)
+            get_cartolas(driver, link_to_downloads, ls_usd_saldos, n_de_cartolas_dl, nav_style)
+
+            try:
+                surf_back_to_empresas(driver)
+            except NoSuchElementException:
+                surf_to_home(driver)
+                login(driver, user)
