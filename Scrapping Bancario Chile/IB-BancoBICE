@@ -1,0 +1,375 @@
+#!/usr/bin/env python3
+#-*- coding: utf-8 -*-
+
+import os
+import csv
+import datetime as dt
+import time
+import shutil
+import unidecode
+import sys
+from base64 import b64decode
+
+from operator import itemgetter
+
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+
+from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import TimeoutException
+
+from mods import bkning_dates
+
+if len(sys.argv) > 1:
+    if sys.argv[1] == "--captura":
+        modo_captura = True
+    else:
+        modo_captura = False
+else:
+    modo_captura = False
+
+#####################################
+#                                   #
+#       Variables y listas          #
+#                                   #
+#####################################
+
+web = 'http://www.bice.cl/'
+usr = b'dXNlcm5hbWU='
+psw = b'cGFzc3dvcmQ='
+
+# TODO: Agregar a solventa tarjetas
+
+empresas = ['EMPRESA1', 'EMPRESA2',]
+rut_empresas = ['RUTEMPRESA1','RUTEMPRESA2',]
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+
+mp = mypath()
+CSVARC = mp.SaldosCSV()
+
+def tiny_watch(newname, carpeta):
+    time.sleep(1)
+    while True:
+        if 'part' in max([f for f in os.listdir(carpeta)],
+                         key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))):
+            time.sleep(2)
+        elif open(os.path.join(carpeta, max([f for f in os.listdir(carpeta)],
+                                            key=lambda xa: os.path.getctime(
+                                                os.path.join(carpeta, xa))))).close is False:
+            time.sleep(1)
+        else:
+            break
+
+    while True:
+        filename = max([f for f in os.listdir(carpeta)],
+                       key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
+        old_name_path = os.path.join(carpeta, filename)
+        new_name_path = os.path.join(carpeta, newname)
+        break
+
+    while True:
+        if filename in old_name_path:
+            os.rename(old_name_path, new_name_path)
+            time.sleep(2)
+
+            if os.path.isfile(old_name_path) == True:
+                if os.stat(old_name_path).st_size == 0 and os.stat(new_name_path).st_size != 0:
+                    time.sleep(1)
+                    os.remove(old_name_path)
+                    break
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size != 0:
+                    time.sleep(1)
+                    os.remove(old_name_path)
+                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size == 0:
+                    time.sleep(1)
+                    shutil.copy2(old_name_path, new_name_path)
+                    os.remove(old_name_path)
+                    break
+            elif os.path.isfile(old_name_path) is False:
+                break
+
+def tiny_file_mover(donde_esta, donde_copiar):
+    folder = os.path.dirname(os.path.abspath(__file__))
+    Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+    path_to_files = os.path.abspath(os.path.join(Revpaths + '/stdin/Cartolas_Bancos/'+str(donde_esta)))
+    path_to_move_files = os.path.abspath(os.path.join(Revpaths + '/stdin/Cartolas_Bancos/'+str(donde_copiar)))
+
+    ls_files = [file for file in os.listdir(path_to_files)]
+
+    for file in ls_files:
+        if 'usd' in file:
+            os.rename(os.path.join(path_to_files, file), os.path.join(path_to_move_files, file))
+
+ffp = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList", 2)
+ffp.set_preference("browser.download.manager.showWhenStarting", False)
+ffp.set_preference("browser.download.dir", mp.Banco('Santander'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                   "application/x-www-form-urlencoded, text/html, application/x-download, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8")
+driver = webdriver.Firefox(ffp)
+
+
+def surf_to_login_page():
+    exit_counter = 0
+
+    while True:
+        try:
+            driver.get(web)
+            driver.implicitly_wait(5)
+            driver.find_element_by_xpath('//a[@Class="login cboxElement"]').click()
+            driver.switch_to.frame(driver.find_element_by_class_name('cboxIframe'))
+            driver.find_element_by_id('optionsRadios2').click()
+            driver.find_element_by_xpath('.//input[@id="inputRut"]').send_keys(b64decode(usr).decode('utf-8'))
+            driver.find_element_by_xpath('.//input[@id="inputPassword"]').send_keys(b64decode(psw).decode('utf-8'))
+            driver.find_element_by_xpath('.//button[text()[contains(.,"Entrar")]]').click()
+            break
+        except NoSuchElementException:
+            exit_counter += 1
+            if exit_counter > 10:
+                print('Cant find Login site')
+                break
+        except TimeoutException:
+            driver.refresh()
+
+def surf_and_pick_empresa(empresa):
+    driver.switch_to.default_content()
+    driver.implicitly_wait(4)
+    Menu = driver.find_element_by_xpath('.//select[@Class="select-home-portal"]')
+    options = Menu.find_elements_by_tag_name('option')
+    for opcion in options:
+        if str(empresa) in opcion.text:
+            opcion.click()
+            break
+
+def surf_and_get_saldo(empresa):
+
+    def get_cmp_code(sociedad):
+
+        if 'EMPRESA2' in sociedad:
+            return 'sigla2'
+        elif 'EMPRESA1' in sociedad:
+            return 'sigla1'
+
+    contador = 0
+    while True:
+        driver.switch_to.default_content()
+        driver.find_element_by_xpath('//*[@id="nav-list"]/li[2]/a').click()
+        driver.find_element_by_xpath('//*[@id="menu2"]/li[1]/ul/li[1]/a').click()
+
+        saldo = driver.find_element_by_xpath('//form[@name="form1"]/table[3]/tbody/tr[2]/td[2]').text
+        cuenta = driver.find_element_by_xpath('//form[@name="form1"]/table[2]/tbody/tr[1]/td/table/tbody/tr/td/span[2]').text
+
+        if saldo != "" and cuenta != "":
+            break
+        else:
+            contador += 1
+            if contador > 10:
+                print('Se espero saldo pero nunca fue encontrado')
+                break
+            else:
+                pass
+
+    return ('BICE', get_cmp_code(empresa),
+                      'BICE-' + cuenta.replace('-', '').replace('(', '').replace(')', '')[-5:], saldo.replace(',', ''))
+
+def csv_saldo_writer(lista):
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for item in lista:
+            sw.writerow(item)
+
+def surf_and_make_cartola_provisoria(empresa, rut):
+
+    # Periodo de Captura de Cartola es de 1 mes o una semana.
+    # Va y busca la cartola del mes pasado en "Cartola Anterior"
+    # Es posible crear cartolas desde por rangos de fechas, pero no se hara asi
+
+    ls_lineas_bancarias = []
+    ls_celdas = []
+
+    def swap_tilde_chars(word):
+        glosa = str(word)
+        char_map = ['Á', 'á', 'É', 'é', 'Ó', 'ó', 'Í', 'í', 'Ú', 'ú']
+        char_dict = {'Á':'A', 'á':'a', 'É':'E', 'é':'e', 'Ó':'O', 'ó':'o', 'Í':'I', 'í':'i', 'Ú':'U', 'ú':'u'}
+        for char in char_map:
+            if char in glosa:
+                glosa.replace(char, char_dict[char])
+        return glosa
+
+    def formatting_lines(ls_lineas_de_cartola,cuenta_bank):
+
+        #   -= Posiciones del input en la lista =-
+        #
+        #   Para la primera linea es distinto, trae el nombre de las columnas
+        #
+        #   0.- Fecha del movimiento
+        #   1.- N° de Documento
+        #   2.- Descipcion bancaria del movimiento
+        #   3.- Monto de Cargo
+        #   4.- Monto de Abono
+        #   5.- Saldo Contable
+        #   6.- Linea de Sobregiro
+
+        #   -= Posiciones para output de cartola =-
+        #
+        #       Las posiciones estan explicadas con base 1, el formato viene en base 0
+        #
+        #   var1 1-4   : "Fecha del movimiento"
+        #   var2 5-7   : "A00" Literal
+        #   var3 8-10  : Codigo BICE
+        #   var4 11-41 : Glosa Bancaria - Integrador para ERP
+        #   var5 42-48 : Numero de Documento desde el banco - Chequear si con los cheques con numros mas largos esto cambia en txt
+        #   var6 49-63 : Monto
+        #   var7 64-68 : Codigo de Agencia
+        #   var8 69-79 : Nombre de la agencia(lugar Fisico)
+
+        ls_lineas_para_txt =[]
+
+        ls_head = True
+        head_date_1 = dt.datetime.today().strftime('%d%m%Y')
+
+        if dt.datetime.today().weekday() == 0:
+            diferencia = 3
+        else:
+            diferencia = 1
+
+        head_date_2 = (dt.datetime.today()-dt.timedelta(diferencia)).strftime('%d%m%Y')
+
+        for linea in ls_lineas_de_cartola[1:]:
+            if ls_head is True:
+                #armar la linea del header aca
+                head1  = '{:<3}'.format('000')
+                head2  = '{:<9}'.format(str(rut)[:9])
+                head3  = '{:<40}'.format(empresa[:40])
+                head4  = '{:<17}'.format('037BANCO BICE    '[:17])
+                head5  = '{:=012}'.format(int(cuenta_bank)) #numerico
+                head6  = '{:<3}'.format('XXX') #PADDING
+                head7  = '{:<8}'.format(dt.datetime.today().strftime('%d%m%Y'))
+                head8  = '{:<6}'.format('YYYYYY') #PADDING
+                head9  = '{:<24}'.format('MONEDA LOCALPESOS DE CHI')
+                head10 = '{:<149}'.format('00000101010001'+ head_date_2 +'+0000001111111100'+ head_date_1 +'+00000222222222000000000033333330000000000000000000000000000000000000000000000000000000000000000000000')
+
+                ls_lineas_para_txt.append(head1+head2+head3+head4+head5+head6+head7+head8+head9+head10+'\n')
+                ls_head = False
+
+            else:
+                if len(linea) > 1:
+                    if 'Inicial' in str(itemgetter(2)(linea)):
+                        pass
+                    else:
+                        var1 = '{0:<4}'.format((itemgetter(0)(linea)).replace('-','')[:4])
+                        if itemgetter(3)(linea) == '0' or itemgetter(3)(linea) == ' 0':
+                            var2 = '{0:<3}'.format('ACE') #Padding
+                        elif itemgetter(4)(linea) == '0' or itemgetter(4)(linea) == ' 0':
+                            var2 = '{0:<3}'.format('CCE') #Padding
+                        else:
+                            var2 = '{0:<3}'.format('BCE')
+                        var3 = '{0:<3}'.format('ZZZ') #PADDING
+                        var4 = '{:<30}'.format(str(itemgetter(2)(linea))[:30])
+                        var4 = '{:<30}'.format(str(unidecode.unidecode(itemgetter(2)(linea)))[:30])
+                        var5 = '{0:>06}'.format(str(itemgetter(4)(linea).replace(' ',''))[:6])
+                        if itemgetter(3)(linea) == '0' or itemgetter(3)(linea) == ' 0':
+                            var6 = '{0:=016}'.format(int(itemgetter(4)(linea).replace('.','').replace(' ','')))
+                        elif itemgetter(4)(linea) == '0' or itemgetter(4)(linea) == ' 0':
+                            var6 = '{0:=016}'.format(int(itemgetter(3)(linea).replace('.','').replace(' ','')))
+                        else:
+                            var6 = '{0:=16}'.format('0')
+                        var7 = '{0:<4}'.format('8888') #Padding
+                        var8 = '{0:<14}'.format('EXTRACTOR') #Padding
+                        ls_lineas_para_txt.append(var1+var2+var3+var4+' '+var5+var6+'00'+var7+var8+'\n')
+
+        return ls_lineas_para_txt
+
+    def drop_cartola_output(lista_con_cargos, empresa):
+
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        cartola = open(os.path.abspath(Revpaths +'/stdin/Cartolas_Bancos/Bice/'+empresa.lower()+'.'+dt.datetime.today().strftime('%Y%m%d')+'.txt'), 'w')
+        for lines in lista_con_cargos:
+            cartola.write(lines)
+
+        cartola.close()
+
+    def last_day_only(fecha_dia_mov):
+        fecha_a_bajar = bkning_dates.live_date.ultimo_dia_habil(bkning_dates.live_date.load_feriados())
+
+        fecha_a_bajar = fecha_a_bajar.strptime('%d/%m/%Y').strftime('%d/%m')
+
+        if fecha_dia_mov == fecha_a_bajar:
+            return True
+        else:
+            return False
+
+    driver.switch_to.default_content()
+    driver.find_element_by_xpath('//*[@id="MenuCTACTE"]/table/tbody/tr/td[1]/table/tbody/tr[2]/td[2]/a').click()
+
+    cuenta_bank = driver.find_element_by_xpath('//*[@id="cont_izq_full_screen"]/table[1]/tbody/tr/td/form/table[2]/tbody/tr[1]/td/table/tbody/tr/td[1]/span[2]').text.replace('(', '').replace(')', '').replace('-', '')
+
+    tabla = driver.find_element_by_xpath('//form[@name="form1"]/table[3]/tbody')
+
+    for line in tabla.find_elements_by_tag_name('tr'):
+        if len(line.find_elements_by_tag_name('td')):
+            first_cell = True
+            for col in line.find_elements_by_tag_name('td'):
+                if first_cell is True:
+                    if col != '':
+                        aux_date = col
+                    elif col == '':
+                        col = aux_date
+                    first_cell = False
+                ls_celdas.append(col.text)
+            ls_lineas_bancarias.append(ls_celdas)
+            ls_celdas = []
+
+    for _ in ls_lineas_bancarias:
+        print(_)
+    drop_cartola_output(formatting_lines(ls_lineas_bancarias, cuenta_bank), empresa)
+
+def main_saldos():
+
+    surf_to_login_page()
+    ls_los_saldos = []
+    for emp in empresas:
+        surf_and_pick_empresa(emp)
+        ls_los_saldos.append(surf_and_get_saldo(emp))
+
+    driver.quit()
+    csv_saldo_writer(ls_los_saldos)
+
+
+def main_saca_cartola():
+
+    surf_to_login_page()
+
+    for emp, rut in zip(empresas, rut_empresas):
+        surf_and_pick_empresa(emp)
+        surf_and_make_cartola_provisoria(emp, rut)
+
+    driver.quit()
+
+if __name__ == '__main__':
+
+    if modo_captura is not True:
+        main_saldos()
+    else:
+        main_saca_cartola()
