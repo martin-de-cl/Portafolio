@@ -13,7 +13,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import NoSuchElementException
 
-#Tuples con los datos de login de las empresas en string
+#Tuples con los datos de login de las empresas en ('Rut',''Verificador de rut', 'Rut usuario', 'Verificador de rut usuario', 'clave')
 
 Datos = [(b'cnV0LXNpbi12ZXJpZmljYWRvcg==',b'dmVyaWZpY2Fkb3ItcnV0',b'cnV0LXVzdWFyaW8=',b'cnV0LXVzdWFyaW8tdmVy',b'cGFzc3dvcmQ='),]
 web = 'https://www.empresas.bancochile.cl/cgi-bin/navega?pagina=enlinea/login_fus'
