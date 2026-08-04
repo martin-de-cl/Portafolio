@@ -1,428 +1,328 @@
-#!/usr/bin/env python3
-#-*- coding: utf-8 -*-
+#! /usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-import os
-import time
-import csv
+"""
+                        AudioFileLocator
+
+    Programa para localizar y mover archivos de forma masiva, basado
+    en un archivo de texto plano relacional del siguiente formato:
+
+            codigo_0000_aaaa Transcripcion del audio 1
+            ...
+            codigo_9999_zzzz Transcripcion del audio N
+
+    Una vez localizados todos los codigos para una determinada frase
+    se puede realizar una copia masiva de los archivos  repartidos en
+    diferents directorios a uno solo centralizado. Efectivamente
+    agrupando todos los recursos de un solo tipo para su uso.
+
+            -Directorio Padre
+            |- basedatos.txt
+            |- Directorio Hijo 1
+                               |- Audio 1.mp3
+                               |- ...
+                               |- Audio N.mp3
+            |- ...
+            |- Directorio Hijo N
+                               |- Audio 1.mp3
+                               |- ...
+                               |- Audio N.mp3
+
+
+@BY         : Martin Pimentel Tarbuskovic
+@REQUEST-BY : Santi Nam
+@Licencia   : MIT 
+@Fecha      : 2026_07_30
+
+"""
 import shutil
-
-from base64 import b64decode
-from operator import itemgetter
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import Select
-from selenium.common.exceptions import NoSuchElementException
-
-#Tuples con los datos de login de las empresas en string
-
-Datos = [(b'cnV0LXNpbi12ZXJpZmljYWRvcg==',b'dmVyaWZpY2Fkb3ItcnV0',b'cnV0LXVzdWFyaW8=',b'cnV0LXVzdWFyaW8tdmVy',b'cGFzc3dvcmQ='),]
-web = 'https://www.empresas.bancochile.cl/cgi-bin/navega?pagina=enlinea/login_fus'
-
-ls_saldo = []
-
-class mypath:
-    def Revpath(self):
-        CWD = os.getcwd()
-        Revpaths = CWD[:-14]
-        return Revpaths
-    def Saldos(self):
-        CWD = os.path.realpath(__file__)
-        Revpaths = CWD[:-14]
-        Cuadraje = Revpaths+"Cuadraje\\Saldos"
-        return Cuadraje
-    def SaldosCSV(self):
-        folder = os.path.dirname(os.path.abspath(__file__))
-        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
-        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
-        return Cuadraje
-    def Banco(self,IDBANCO):
-        folder = os.path.dirname(os.path.abspath(__file__))
-        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
-        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
-        return Bancos
-
-mp = mypath()
-CSVARC = mp.SaldosCSV()
-
-def user_login(driver, ls_perfil):
-    login_id = ['rutemp1','dvemp1','rut1','verificador1','pin1']
-    driver.switch_to.default_content()
-    driver.find_element_by_id('contenidoslogin')
-
-    for i, j in zip(ls_perfil, login_id):
-        driver.find_element_by_id(j).send_keys(i)
-
-    driver.find_element_by_class_name('btn_amarillodegrade').send_keys(Keys.RETURN)
-
-def neo_surf_to_cartola_historica(driver):
-    exit_counter_1 = 0
-    exit_counter_2 = 0
-
-    while True:
-        try:
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('heading'))
-            empresa = driver.find_element_by_xpath('//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
-            if empresa != None:
-                break
-        except:
-            exit_counter_1 += 1
-            if exit_counter_1 == 10:
-                print('Cant lock on empresa or Menu')
-                break
-            else:
-                pass
-
-    while True:
-        try:
-            if 'SOCOFAR S.A.' == empresa:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(driver.find_element_by_name('menu'))
-                driver.implicitly_wait(2)
-                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
-                break
-            else:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(driver.find_element_by_name('menu'))
-                driver.implicitly_wait(2)
-                driver.find_element_by_xpath("//a[@name='sub2']").click()
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath("//a[@name='sub4']").click()
-                break
-        except:
-            exit_counter_2 += 1
-            if exit_counter_2 == 10:
-                print('Cant move to Cartola Historica')
-                break
-            else:
-                pass
-
-def surf_to_cartola_historica(driver):
-    counter_1 = 0
-    counter_2 = 0
-    while True:
-        try:
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('heading'))
-            empresa = driver.find_element_by_xpath('//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
-            break
-        except NoSuchElementException:
-            counter_1 += 1
-            if counter_1 == 10:
-                print('Max. Attempt to locate heading reached')
-                break
-    while True:
-        try:
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('menu'))
-            driver.implicitly_wait(2)
-            break
-        except NoSuchElementException:
-            counter_2 += 1
-            if counter_2 == 10:
-                print('Max. Attempt to locate menu reached')
-                break
-
-    if 'Empresa1' == empresa:
-        try:
-            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
-        except NoSuchElementException:
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
-            try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(driver.find_element_by_name('menu'))
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[3]/td/a').click()
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath('/html/body/table[2]/tbody/tr[5]/td/a').click()
-            except:
-                print('last attempt failed')
-    else:
-        try:
-            driver.find_element_by_xpath("//a[@name='sub2']").click()
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath("//a[@name='sub4']").click()
-        except NoSuchElementException:
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath("//a[@name='sub2']").click()
-            driver.implicitly_wait(4)
-            driver.find_element_by_xpath("//a[@name='sub4']").click()
-            try:
-                driver.switch_to.default_content()
-                driver.switch_to.frame(driver.find_element_by_name('menu'))
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath("//a[@name='sub2']").click()
-                driver.implicitly_wait(4)
-                driver.find_element_by_xpath("//a[@name='sub4']").click()
-            except:
-                print('last second attempt failed')
-
-def pick_a_cuenta_first_move(driver):
-    counter  = 0
-    while True:
-        try:
-            time.sleep(1)
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
-            driver.implicitly_wait(2)
-            n_cuentas = len(driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/form/div/select[2]')
-                            .find_elements_by_tag_name('option'))
-
-            menu = Select(driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/form/div/select[2]'))
-            menu.select_by_index(0)
-            driver.find_element_by_id('btnSeleccionarCuenta').click()
-
-            return  n_cuentas
-        except NoSuchElementException:
-            counter += 1
-            if counter == 10:
-                print('No se encuentra el elemento. Intentos maximos alcanzados')
-                break
-
-def pick_a_cuenta_second_move(driver, n_cuentas):
-    ncta = int(n_cuentas)
-    driver.switch_to.default_content()
-    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
-    driver.implicitly_wait(2)
-
-    for option in range(1,ncta):
-
-        try:
-            driver.find_element_by_xpath('//a[@Class="botoCambiarCuenta noImprimible"]').click()
-        except NoSuchElementException:
-            driver.find_element_by_xpath('//a[@Class="noImprimible botoCambiarCuenta"]').click()
-
-        driver.implicitly_wait(2)
-        cuenta_select = Select(driver.find_element_by_xpath('//select[@name="cuentaSeleccionada"]'))
-        cuenta_select.select_by_index(option)
-
-        try:
-            driver.find_element_by_xpath("//input[@id='btnSeleccionarCuenta']").click()
-            driver.implicitly_wait(2)
-        except NoSuchElementException:
-            driver.find_element_by_xpath("//a[@Class='boton']").click()
-            time.sleep(1)
-        finally:
-            #driver.implicitly_wait(5)
-            cuenta_y_empresa = get_empresa_id_from_web(driver)
-            grab_saldo_inicial(driver, cuenta_y_empresa)
-            #driver.implicitly_wait(2)
-            grab_cartola_electronica(driver, cuenta_y_empresa)
-
-def grab_saldo_inicial(driver, cuenta_y_empresa):
-    cuenta = itemgetter(0)(cuenta_y_empresa)
-    empresa = itemgetter(1)(cuenta_y_empresa)
-    driver.switch_to.default_content()
-    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
-    driver.implicitly_wait(2)
-    saldo = driver.find_element_by_xpath(
-        "//table[@Class='borderTable']/tbody/tr/td/table/tbody/tr[3]/td[3]/strong").text
-    saldo = saldo.replace('$ ','')
-    print('%s, %s, %s' %( empresa, 'CHI-'+cuenta, saldo))
-    ls_saldo.append(('CHI', empresa, 'CHI-'+cuenta, saldo))
-
-def grab_cartola_electronica(driver, cuenta_y_empresa):
-    cuenta = itemgetter(0)(cuenta_y_empresa)
-    empresa = itemgetter(1)(cuenta_y_empresa)
-    nombre = str(empresa+'.CHI.'+cuenta+'.txt')
-    driver.switch_to.default_content()
-    driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
-    cargo = driver.find_element_by_xpath('//table[@Class="borderTable"]/tbody/tr/td/table/tbody/tr[2]/td[7]/nobr').text
-    abono = driver.find_element_by_xpath('//table[@Class="borderTable"]/tbody/tr/td/table/tbody/tr[3]/td[7]/nobr').text
-
-    if cargo == '$ 0' and abono == '$ 0':
-        pass
-    else:
-        driver.find_element_by_xpath('//span[@id="expoDato_arrow"]').click()
-        driver.implicitly_wait(2)
-        driver.find_element_by_xpath('//div[@id="expoDato_child"]/a').click()
-        driver.implicitly_wait(2)
-        tiny_watch_v2(nombre, mp.Banco('Chile'))
-        driver.implicitly_wait(4)
-
-#############################
-##                         ##
-## Funciones de navegacion ##
-##                         ##
-#############################
-
-def firefox_profile():
-    ffp = webdriver.FirefoxProfile()
-    ffp.set_preference("browser.download.folderList",2)
-    ffp.set_preference("browser.download.manager.showWhenStarting",False)
-    ffp.set_preference("browser.download.dir",mp.Banco('Chile'))
-    ffp.set_preference("browser.helperApps.neverAsk.saveToDisk","text/plain, text/csv")
-    return webdriver.Firefox(ffp)
-
-def get_empresa_id_from_web(driver):
-    counter = 0
-    while True:
-        try:
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('heading'))
-            empresa_web = driver.find_element_by_xpath(
-                '//*[@id="top"]/div/div/div/div/div[1]/div/table/tbody/tr/td/strong[2]').text
-
-            time.sleep(1)
-            driver.switch_to.default_content()
-            driver.switch_to.frame(driver.find_element_by_name('CONTENT'))
-            driver.implicitly_wait(4)
-            cuenta = driver.find_element_by_xpath('//*[@id="cartolaMovi"]/div/ul/li[4]/strong').text[-6:]
-            cuenta = cuenta.replace('-', '')
-            break
-
-        except NoSuchElementException:
-            driver.refresh()
-            if counter == 20:
-                print('no se pudo seguir navegando')
-                break
-            else:
-                counter += 1
-        except UnboundLocalError:
-            pick_a_cuenta_first_move(driver)
-            if counter == 20:
-                print('no se pudo seguir navegando')
-                break
-            else:
-                counter += 1
+import tkinter as tk
+from tkinter import ttk, filedialog, END, font as tkFont
+from os.path import abspath, isdir, isfile, join as pjoin
+from os import listdir
 
 
-    if empresa_web == 'Empresa1':
-        empresa = 'EMP1'
-    elif empresa_web == 'Empresa2':
-        empresa = 'EMP2'
-    elif empresa_web == 'Empresa3':
-        empresa = 'EMP3'
-    elif empresa_web == 'Empresa4':
-        empresa = 'EMP4'
-    elif empresa_web == 'Empresa5':
-        empresa = 'EMP4'
-    else:
-        empresa = 'NUL'
+class GraphicalUserInterface(tk.Tk):
 
-    return (cuenta, empresa)
+    def __init__(self, h_res:str='802', v_res:str='602', resizeable:bool=False):
 
-#############################
-##                         ##
-##  Operacion de Archivos  ##
-##                         ##
-#############################
+        super().__init__()
 
-def tiny_watch(newname, carpeta):
-    check_download = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
-    while '.part' in check_download:
-        time.sleep(1)
+        self.INTRUCCIONES_TEXTO = '                                       Instrucciones\n' \
+                                  ' ----------------------------------------------------------------------------------------------\n' \
+                                  '\n' \
+                                  '  1.- Elejir el archivo con la base de datos para iniciar cualquier tipo de operacion.\n' \
+                                  '\n' \
+                                  '  2.- Escribir una palabra, frase o texto, para encontrar coincidencias. Mientras mas\n' \
+                                  '      especifico sea el texto, menos coincidencias encontraras.\n' \
+                                  '      ADVERTENCIA: Si no se provee un termino de busqueda mostrara todo en la Base de\n' \
+                                  '                  Datos.\n' \
+                                  '\n' \
+                                  '  3.- Una vez satisfecha con los resultados, elejir la carpeta a donde copiar los\n' \
+                                  '      archivos de Audio y usar boton "Copiar".\n' \
+                                  '      ADVERTENCIA: Se copiaran todos los archivos que aparezcan en esta pantalla, los\n' \
+                                  '                   archivos originales de base de datos y audio no se modificaran de\n' \
+                                  '                   manera alguna.\n' \
+                                  '                   Evita copiar todos los archivos por error!\n' \
+                                  '\n' \
+                                  '  4.- BONUS: Es posible crear un archivo txt con todas las frases unicas que se\n' \
+                                  '             encuentran en la base de datos. Asi facilitando la lectura del archivo\n' \
+                                  '             A.- Seleccionar carpeta donde crear el archivo\n' \
+                                  '             B.- Usar el boton "Crear", el archivo tendra nombre "Frases_unicas.txt\n'
 
-    filename = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
-    old_name_path = os.path.join(carpeta, filename)
-    new_name_path = os.path.join(carpeta, newname)
+        self.RESIZEABLE = resizeable
+        self.h_res, self.v_res = h_res, v_res
 
-    if filename in old_name_path:
-        os.rename(old_name_path, new_name_path)
-        time.sleep(0.5)
+        self.columnconfigure(0, weight=2)
 
-        if os.path.isfile(old_name_path) == True:
-            if os.stat(old_name_path).st_size == 0:
-                try:
-                    os.remove(old_name_path)
-                except:
-                    print('flag')
-                    pass
-            else:
-                if os.stat(new_name_path).st_size == 0:
-                    try:
-                        os.remove(new_name_path)
-                        os.rename(old_name_path, new_name_path)
-                        time.sleep(1)
-                    except:
-                        print('flag')
-                        pass
+        self.lbl_1 = 'Pick DB'
 
-def tiny_watch_v2(newname, carpeta):
-    time.sleep(1)
-    while True:
-        if 'part' in max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))):
-            time.sleep(1)
-        elif open(os.path.join(carpeta, max([f for f in os.listdir(carpeta)],
-                                            key=lambda xa: os.path.getctime(os.path.join(carpeta, xa))))).close is False:
-            time.sleep(1)
+        self.LABEL_FONT=self._get_font_style(size=10, weight=True)
+        self.ENTRYBOX_FONT=self._get_font_style(size=10)
+
+        self.PATH_TO_CODES_DATABASE = tk.StringVar()
+        self.PATH_TO_CODES_DATABASE.set('Selecciona tu base de datos')
+
+        self.SEARCH_TEXT_BOX = tk.StringVar()
+
+        self.RESULTS_TEXT_BOX = tk.StringVar()
+
+        self.LAST_SEARCH = ''
+        self.SEARCH_RESULTS_DICTIONARY = {}
+
+        self.STDOUT_DIRECTORY_LOCATION = tk.StringVar()
+        self.STDOUT_DIRECTORY_LOCATION.set('Selecciona una carpeta a donde mover los audios')
+
+        self.STDOUT_UNIQUES_PHRASES = tk.StringVar()
+        self.STDOUT_UNIQUES_PHRASES.set('Selecciona una carpeta donde guardar frases unicas con el nombre "Frases_unicas.txt"')
+
+    def _get_font_style(self,
+                        family:str='Consolas', size:int=16,
+                        weight:bool=False, slant:bool=False,
+                        underline:bool=False, overstrike:bool=False)->tkFont:
+        if weight:
+            _weight = 'bold'
         else:
-            break
+            _weight = 'normal'
+        if slant:
+            _slant = 'italic'
+        else:
+            _slant = 'roman'
 
-    while True:
-        filename = max([f for f in os.listdir(carpeta)], key=lambda xa: os.path.getctime(os.path.join(carpeta, xa)))
-        old_name_path = os.path.join(carpeta, filename)
-        new_name_path = os.path.join(carpeta, newname)
-        time.sleep(1)
-        break
+        return tkFont.Font(family=family, size=size, weight=_weight, slant=_slant, underline=underline, overstrike=overstrike)
 
-    while True:
-        time.sleep(1)
-        if filename in old_name_path:
-            os.rename(old_name_path, new_name_path)
-            time.sleep(1)
+    def _find_unique_phrases(self):
+        db_file = self.PATH_TO_CODES_DATABASE.get()
 
-            if os.path.isfile(old_name_path) == True:
-                if os.stat(old_name_path).st_size == 0 and os.stat(new_name_path).st_size != 0 :
-                    time.sleep(1)
-                    os.remove(old_name_path)
-                    break
-                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size != 0:
-                    time.sleep(1)
-                    os.remove(old_name_path)
-                elif os.stat(old_name_path).st_size != 0 and os.stat(new_name_path).st_size == 0:
-                    time.sleep(1)
-                    shutil.copy2(old_name_path,new_name_path)
-                    os.remove(old_name_path)
-                    break
-            elif os.path.isfile(old_name_path) is False:
-                break
+        tmp_list_dup = []
+        tmp_element = ''
+        tmp_list_of_uniques = []
 
-def csv_cartola_writer(lista):
-    with open(CSVARC, 'a', newline='') as csvfile:
-        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        for item in lista:
-            sw.writerow(item)
+        with open(db_file, 'r', encoding='utf-8') as file:
+            lines = file.read()
+            for line in lines.split('\n'):
+                tmp_list_dup.append(line.split(' ', maxsplit=1)[1])
 
+        tmp_list_dup.sort()
 
-def main():
+        for element in tmp_list_dup:
+            if element != tmp_element:
+                tmp_list_of_uniques.append(element)
+                tmp_element = element
 
-    driver = firefox_profile()
-    driver.get(web)
-    stop_counter = 0
+        with open(abspath(self.STDOUT_UNIQUES_PHRASES.get()), 'w') as file:
+            for line in tmp_list_of_uniques:
+                file.write('{}\n'.format(line))
 
-    for profile in Datos:
-        while True:
-            try:
-                user_login(driver, profile)
+    def _get_all_child_folders(self):
+        aux_dir_list = []
+        if isfile(abspath(self.PATH_TO_CODES_DATABASE.get())):
+            root_dir=self.PATH_TO_CODES_DATABASE.get().rsplit('/', maxsplit=1)[0]
+            dirs = listdir(abspath(root_dir))
+            for dir in dirs:
+                if isdir(pjoin(abspath(root_dir), dir)):
+                    #excluyo el archivo para guardar los audios, si se encuentra en el directorio de la DB
+                    if pjoin(abspath(root_dir), dir) != abspath(self.STDOUT_DIRECTORY_LOCATION.get()):
+                        aux_dir_list.append(pjoin(abspath(root_dir), dir))
 
-                neo_surf_to_cartola_historica(driver)
-                n_cuentas = pick_a_cuenta_first_move(driver)
-                cuenta_empresa = get_empresa_id_from_web(driver)
-                grab_saldo_inicial(driver,  cuenta_empresa)
-                grab_cartola_electronica(driver, cuenta_empresa)
+        return aux_dir_list
 
-                if n_cuentas > 1 :
-                    pick_a_cuenta_second_move(driver, n_cuentas)
+    def _get_all_files_recursevely(self, extension:str='wav'):
+        #TODO: Ajustar la extension del archivo
+        aux_files = []
+        directories = self._get_all_child_folders()
+        for dir in directories:
+            for code in self.SEARCH_RESULTS_DICTIONARY:
+                if isfile(abspath(pjoin(dir, '{}.{}'.format(code, extension)))):
+                    aux_files.append(abspath(pjoin(dir, '{}.{}'.format(code, extension))))
+        return aux_files
 
-                driver.get(web)
-                break
-            except:
-                stop_counter += 1
-                if stop_counter > 4:
-                    print('Full Program FAIL')
-                    break
+    def _copy_all_flagged_files(self):
+        aux_files = self._get_all_files_recursevely()
+        for file in aux_files:
+            shutil.copy(file, abspath(pjoin(self.STDOUT_DIRECTORY_LOCATION.get(), file.rsplit('\\',maxsplit=1)[1])))
 
-    csv_cartola_writer(ls_saldo)
+    def _format_text_for_box(self, dictionary:{})->str:
+        separator = '----------------------------   ---------------------------------------------------------------'
+        tmp_str='{:30} {}\n{}\n'.format('Nombre del Archivo', 'Texto Buscado',separator)
+        for key in dictionary:
+            tmp_str = '{}{:30} {}\n'.format(tmp_str, key, dictionary[key])
+        return tmp_str
 
-    driver.quit()
+    def _get_db_file(self)->None:
+        db_path = filedialog.askopenfilename()
+        if len(db_path) != 0:
+            self.PATH_TO_CODES_DATABASE.set(db_path)
+
+    def _get_stdout_folder(self)->None:
+        path = filedialog.askdirectory()
+        if len(path) !=0:
+            self.STDOUT_DIRECTORY_LOCATION.set(path)
+
+    def _get_uniques_phrases_location(self)->None:
+        path = filedialog.askdirectory()
+        if len(path) !=0:
+            self.STDOUT_UNIQUES_PHRASES.set('{}/{}'.format(path, 'Frases_unicas.txt'))
+
+    def _search_db_for_text(self)->None:
+        text = self.SEARCH_TEXT_BOX.get()
+        db_file = self.PATH_TO_CODES_DATABASE.get()
+
+        if self.LAST_SEARCH != '':
+            self.SEARCH_RESULTS_DICTIONARY={}
+            self.LAST_SEARCH =text
+
+        with open(db_file, 'r', encoding='utf-8') as file:
+            lines = file.read()
+            for line in lines.split('\n'):
+                if text in line.split(' ', maxsplit=1)[1]:
+                    self.SEARCH_RESULTS_DICTIONARY[line.split(' ', maxsplit=1)[0]] = line.split(' ', maxsplit=1)[1]
+
+        self.LAST_SEARCH = text
+        texto = self._format_text_for_box(self.SEARCH_RESULTS_DICTIONARY)
+        self.set_text_to_box(texto)
+
+    def set_text_to_box(self, text)->None:
+
+        locacion = ['!frame', '!frame3', '!text']
+        tmp_obj=self
+        for item in locacion:
+            tmp_obj = tmp_obj.children[str(item)]
+        tmp_obj.delete('1.0', END)
+        tmp_obj.insert(END, '{}'.format(text, '\r'))
+
+    def __mk_mlinetextbox(self, tabframe, textvar=None, text='', height=20, width=40, wrap='none', bg='white',
+                          fg='black', column=0, columnspan=1, row=0, rowspan=1, ipadx=0, ipady=0, sticky=tk.N,
+                         custom_font=None)->None:
+
+        mtextbox = tk.Text(tabframe, height=height, width=width, wrap=wrap, bg=bg, fg=fg, font=custom_font)
+
+        ys = ttk.Scrollbar(tabframe, orient='vertical', command=mtextbox.yview)
+        xs = ttk.Scrollbar(tabframe, orient='horizontal', command=mtextbox.xview)
+        ys.columnconfigure(0, weight=1)
+        xs.rowconfigure(0, weight=1)
+
+        mtextbox['yscrollcommand'] = ys.set
+        mtextbox['xscrollcommand'] = xs.set
+        mtextbox.insert('end', text)
+
+        mtextbox.grid(column=column, columnspan=columnspan, row=row, rowspan=rowspan, ipadx=ipadx, ipady=ipady,
+                      sticky=sticky)
+        ys.grid(sticky='nsw', column=column + 1, row=row)
+        xs.grid(sticky='wes', column=column, row=row + 1)
+
+    def __mk_frm(self, parent_frame, column=0, row=0, padding=4, sticky='nswe', relief='sunken',
+                 height=None, width=None, col_weight=1, row_weight=1,
+                 propagate=True, resizable_column=True, resizable_row=True) -> tk.Tk.frame:
+
+        frame = ttk.Frame(parent_frame, width=width, height=height, relief=relief, padding=padding)
+
+        if resizable_column is False:
+            frame.columnconfigure(column, weight=col_weight)
+        if resizable_row is False:
+            frame.rowconfigure(row, weight=row_weight)
+        if propagate is False:
+            frame.grid_propagate(False)
+
+        frame.grid(column=column, row=row, sticky=sticky)
+        return frame
+
+    def __mk_lbl(self, parent_frame, text, column=0, row=0)->ttk.Label:
+        lbl = ttk.Label(parent_frame, text=text, font=self.LABEL_FONT)
+        lbl.grid(column=column, row=row)
+        return lbl
+
+    def __mk_etr(self, parent_frame, column=0, row=0, textvar='', sticky='we')->ttk.Entry:
+        entry = ttk.Entry(parent_frame, textvariable=textvar, font=self.ENTRYBOX_FONT)
+        entry.grid(column=column, row=row, sticky=sticky)
+
+        return entry
+
+    def __mk_btn(self, parent_frame:ttk.Frame, text:str='TextHolder',
+                 column:int=0, row:int=0, command=None, state='enabled', image=None)-> ttk.Button:
+
+        image_path = image
+        if image_path is None:
+            btn = ttk.Button(parent_frame, text=text, state=state,command=command)
+        # else:
+        #     imagen = ImageTk.PhotoImage(Image.open(image_path).resize((20,20), Image.ANTIALIAS))
+        #     btn = ttk.Button(parent_frame, image=imagen, state=state, command=command)
+        #     btn.imagen = imagen #Referencia para las imagenes en general de tkinter
+        btn.grid(column=column, row=row)
+        return btn
+
+    def _create_gui(self)->None:
+        main_window = self.__mk_frm(self, column=0, row=0)
+        main_window.rowconfigure(0, weight=1)
+        main_window.columnconfigure(0, weight=1)
+
+        file_frame = self.__mk_frm(main_window, column=0, row=0)
+        file_frame.rowconfigure(0, weight=1)
+        file_frame.columnconfigure(1, weight=1)
+        label = self.__mk_lbl(file_frame, column=0, row=0, text='Pick DB          ')
+        db_location = self.__mk_etr(file_frame, column=1, row=0, textvar=self.PATH_TO_CODES_DATABASE)
+        picker_button = self.__mk_btn(file_frame, column=2, row=0, text='Select File', command=self._get_db_file)
+
+        text_search_frame = self.__mk_frm(main_window, row=1, column=0)
+        text_search_frame.columnconfigure(0, weight=0)
+        text_search_frame.columnconfigure(1, weight=3)
+        text_search_frame.columnconfigure(2, weight=0)
+        label_2 = self.__mk_lbl(text_search_frame, row=0, column=0, text='Ingresa tu texto ')
+        search_box = self.__mk_etr(text_search_frame, row=0, column=1, textvar=self.SEARCH_TEXT_BOX)
+        search_button = self.__mk_btn(text_search_frame, row=0, column=2, text='Search', command=self._search_db_for_text)
+
+        search_results_frame = self.__mk_frm(main_window, row=2, column=0)
+        box_1 = self.__mk_mlinetextbox(search_results_frame, row=0, column=0, bg='black', fg='magenta', sticky='we',
+                                       width=96, height=24, text=self.INTRUCCIONES_TEXTO)
+
+        file_operation_frame = self.__mk_frm(main_window, row=3, column=0)
+        file_operation_frame.columnconfigure(0, weight=0)
+        file_operation_frame.columnconfigure(1, weight=3)
+        file_operation_frame.columnconfigure(2, weight=0)
+        std_out_label = self.__mk_lbl(file_operation_frame, row=0, column=0, text='Guardar Audios ')
+        std_out_location=self.__mk_etr(file_operation_frame, row=0, column=1, textvar=self.STDOUT_DIRECTORY_LOCATION)
+        std_out_picker_button = self.__mk_btn(file_operation_frame, row=0, column=2, text='Select Folder', command=self._get_stdout_folder)
+        std_out_picker_button_test = self.__mk_btn(file_operation_frame, row=1, column=2, text='Copiar', command=self._copy_all_flagged_files)
+
+        uniques_creation_frame = self.__mk_frm(main_window, row=4, column=0)
+        uniques_creation_frame.columnconfigure(0, weight=0)
+        uniques_creation_frame.columnconfigure(1, weight=3)
+        uniques_creation_frame.columnconfigure(2, weight=0)
+        uniques_creation_label = self.__mk_lbl(uniques_creation_frame, row=0, column=0, text='Guardar Frases ')
+        uniques_creation_location = self.__mk_etr(uniques_creation_frame, row=0, column=1, textvar=self.STDOUT_UNIQUES_PHRASES)
+        uniques_creation_button = self.__mk_btn(uniques_creation_frame, row=0, column=2, text='Select Folder', command=self._get_uniques_phrases_location)
+        uniques_creation_button_test = self.__mk_btn(uniques_creation_frame, row=1, column=2, text='Crear', command=self._find_unique_phrases)
+
+    def main(self)->None:
+
+        self.title('Buscador de Audio')
+        self.geometry('{}x{}'.format(self.h_res, self.v_res))
+        self.resizable(width=self.RESIZEABLE, height=self.RESIZEABLE)
+
+        self._create_gui()
+        self.mainloop()
 
 if __name__ == '__main__':
-    main()
+
+    gui = GraphicalUserInterface()
+    gui.main()
