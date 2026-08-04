@@ -1,0 +1,459 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import csv
+import time
+import datetime as dt
+import os
+
+import win32com.client
+
+from operator import itemgetter
+from subprocess import PIPE, run
+from base64 import b64decode
+
+from selenium.common.exceptions import NoSuchElementException
+from selenium import webdriver
+from datetime import timedelta
+from datetime import datetime
+from selenium.webdriver.common.keys import Keys
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.common.exceptions import NoSuchFrameException
+
+
+class outlook_bot:
+
+    def __init__(self, folder=None):
+        self.outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
+        if folder is not None:
+            self.folder = self.outlook.Folders['Correo Martin Pimentel'].Folders['Bandeja de entrada'].Folders[folder]
+        else:
+            self.folder = self.outlook.Folders['Correo Martin Pimentel'].Folders['Bandeja de entrada']
+
+    def list_files_to_dl(self, item):
+        print([att for att in item.attachments])
+
+    def mensajes_en_carpeta(self):
+        return self.folder.Items
+
+
+    @staticmethod
+    def open_outlook():
+        cmd = 'tasklist | find "OUTLOOK"'
+        path_outlook_exe = os.path.abspath('C:\\Program Files (x86)\\Microsoft Office\\Office14\\OUTLOOK.EXE')
+
+        time.sleep(10)
+        if 'OUTLOOK' in run(cmd, bufsize=0, stdout=PIPE, stderr=PIPE, universal_newlines=0, shell=True).stdout.decode(
+                'utf-8'):
+            pass
+        else:
+            os.startfile(path_outlook_exe)
+
+    @staticmethod
+    def close_outlook():
+
+        cmd = 'tasklist | find "OUTLOOK"'
+        taskPID = run(cmd, bufsize=0, stdout=PIPE, stderr=PIPE, universal_newlines=0, shell=True).stdout.decode('utf-8')
+        taskill = 'taskkill /PID %s' % taskPID.split(' ', maxsplit=1)[1].lstrip().split(' ', maxsplit=1)[0].rstrip()
+        if 'OUTLOOK' in taskPID:
+            run(taskill)
+
+    @staticmethod
+    def file_check(fileName):
+        if os.path.exists(fileName):
+            return True
+        else:
+            return False
+
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+mp = mypath()
+
+class tiempo:
+    def ayerS(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m")
+    def hoyS(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayer(self):
+        RawPast = dt.datetime.today()-dt.timedelta(1)
+        return RawPast.strftime("%d/%m/%Y")
+    def hoy(self):
+        return dt.datetime.today().strftime("%d/%m/%Y")
+    def ayerVie(self):
+        RawPast = dt.datetime.today()-dt.timedelta(3)
+        return RawPast.strftime("%d/%m/%Y")
+    def ayerJue(self):
+        RawPast = dt.datetime.today()-dt.timedelta(4)
+        return RawPast.strftime("%d/%m/%Y")
+    def SiLun(self):
+        return dt.datetime.today().weekday()
+
+#Datos
+Web       = 'https://www.bancoestado.cl/imagenes/empresas2008/Acceso_empresas/acceso_clientes.html'
+CSVARC    = mp.SaldosCSV()
+CheckD    = []
+
+CuentasLi = []
+login_data = [('RUTEMPRESA1','RUTUSUARIO1','CLAVE1','CUENTA1','cuentacorta1','SIGLAEMPRESA1'),
+            ('RUTEMPRESA2','RUTUSUARIO2','CLAVE2','CUENTA2','cuentacorta2','SIGLAEMPRESA2'),]
+ls_saldos = []
+
+#Perfil de Firefox
+ffp    = webdriver.FirefoxProfile()
+ffp.set_preference("browser.download.folderList",2)
+ffp.set_preference("browser.download.manager.showWhenStarting",False)
+ffp.set_preference("browser.download.dir",mp.Banco('Estado'))
+ffp.set_preference("browser.helperApps.neverAsk.saveToDisk","application/x-www-form-urlencoded, text/html, application/x-download, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8")
+driver = webdriver.Firefox(ffp)
+tm     = tiempo()
+
+def get_me_a_saldo(num_cta, cmp_code):
+
+    AXNumCta = num_cta
+    siglaEMP = cmp_code
+
+    def check_dates(ls_table_object):
+        for item in ls_table_object:
+            if tm.ayerS() or item.find_elements_by_tag_name('td')[0].text in item.find_elements_by_tag_name('td')[0].text:
+                return True
+            else:
+                return False
+
+    def get_cartola_en_linea():
+
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_name("left"))
+        driver.find_element_by_id("menu")
+
+        driver.find_element_by_id("ntMenu3d").find_element_by_tag_name("a").click()
+        time.sleep(1)
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_name("main"))
+
+        driver.implicitly_wait(2)
+        Option2 = driver.find_element_by_id("AcctIDFrom").find_elements_by_tag_name("option")
+        try:
+            Option2[0].click()
+            driver.find_element_by_id("BtnAceptar").find_element_by_tag_name("a").click()
+        except:
+            pass
+
+        time.sleep(1)
+        Var1 = driver.find_element_by_id('tbdatCli').find_element_by_tag_name('tbody')
+        Var2 = Var1.find_element_by_tag_name('tr').find_element_by_tag_name('td')
+        Var3 = Var2.find_elements_by_tag_name('table')
+        Var4 = Var3[2].find_element_by_tag_name('tbody').find_element_by_tag_name('tr')
+        Var5 = Var4.find_element_by_tag_name('td')
+        time.sleep(1)
+        SaldoC = Var5.text[24:]
+        print("%s, EST-%s, $ %s" % (siglaEMP, AXNumCta, SaldoC.replace(" ", "")))
+        ls_saldos.append(('EST', siglaEMP, 'EST-' + AXNumCta, SaldoC))
+
+    def get_saldo_from_last_tbl():
+        driver.switch_to.default_content()
+        driver.switch_to.frame(driver.find_element_by_xpath('//frame[@id="fr3"]'))
+
+        saldo = driver.find_element_by_xpath('.//table[@Class="pantalla imprime2"]/tbody/tr/td/center/center/table/tbody/tr[6]/td[2]').text
+        print("%s, EST-%s, $ %s" % (siglaEMP, AXNumCta, saldo))
+        ls_saldos.append(('EST', siglaEMP, 'EST-' + AXNumCta, saldo.replace('.','')))
+
+    stop_counter = 0
+    while True:
+        try:
+            filas_his = driver.find_element_by_id('mDetalle').find_elements_by_xpath('.//tbody/tr')
+            '//*[@id="mDetalle"]'
+            break
+        except NoSuchElementException:
+            time.sleep(1)
+            stop_counter += 1
+            if stop_counter > 20:
+                filas_his = None
+                print('La tabla de Cargos nunca fue encontrada')
+                break
+
+    if filas_his is not None:
+        if check_dates(reversed(filas_his)) is True:
+            for fila in reversed(filas_his):
+                if dt.datetime.today().weekday() == 0:
+                    if (dt.datetime.today()-dt.timedelta(3)).strftime('%d/%m') in fila.find_elements_by_tag_name("td")[0].text:
+                        ls_saldos.append(('EST', siglaEMP, 'EST-'+AXNumCta, fila.find_elements_by_tag_name("td")[6].text.replace('.','')))
+                        print('%s, EST-%s, $ %s' % (siglaEMP, AXNumCta, fila.find_elements_by_tag_name("td")[6].text))
+                        break
+                else:
+                    if tm.ayerS() in fila.find_elements_by_tag_name("td")[0].text:
+                        ls_saldos.append(('EST', siglaEMP, 'EST-'+AXNumCta, fila.find_elements_by_tag_name("td")[6].text.replace('.','')))
+                        print('%s, EST-%s, $ %s' % (siglaEMP, AXNumCta, fila.find_elements_by_tag_name("td")[6].text))
+                        break
+        else:
+            get_saldo_from_last_tbl()
+    else:
+        get_cartola_en_linea()
+
+
+def drop_abonos_csv(ls_with_abonos):
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for line in ls_with_abonos:
+            sw.writerow(line)
+
+
+def old_main():
+    # Login
+    for profile in login_data:
+
+        RutEmp = itemgetter(0)(profile)
+        User = itemgetter(1)(profile)
+        Pass = itemgetter(2)(profile)
+        NumCta = itemgetter(3)(profile)
+        AXNumCta = itemgetter(4)(profile)
+        siglaEMP = itemgetter(5)(profile)
+        driver.get(Web)
+        driver.implicitly_wait(2)
+
+        Lefty = driver.find_element_by_id("sidebar1")
+        driver.implicitly_wait(3)
+        driver.switch_to.frame(driver.find_element_by_tag_name("iframe"))
+        driver.implicitly_wait(2)
+
+        driver.find_element_by_id("CustPermIDAux").send_keys(RutEmp)
+        driver.find_element_by_id("CustLoginIDAux").send_keys(User)
+        driver.find_element_by_id("SignonPswdAux").send_keys(Pass)
+        driver.find_element_by_id("enviar").click()
+
+        class Cartolas:
+            def getHis(self):
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                MenuIzquierdo = driver.find_element_by_id("menu")
+                driver.find_element_by_id("ntMenu0nb").click()
+                driver.implicitly_wait(2)
+                CarHistorica = driver.find_element_by_id("ntMenu4d")
+                CarHistorica.find_element_by_tag_name("a").click()
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+            def filHis(self):
+                if dt.datetime.today().weekday() == 0:
+                    date_inicial = (dt.datetime.today() - dt.timedelta(3)).strftime('%d/%m/%Y')
+                    date_final = (dt.datetime.today() - dt.timedelta(2)).strftime('%d/%m/%Y')
+                else:
+                    date_inicial = tm.ayer()
+                    date_final = tm.hoy()
+
+                driver.find_element_by_id("strFechaInicio").send_keys(Keys.BACK_SPACE)
+                driver.find_element_by_id("strFechaInicio").send_keys(date_inicial)
+                driver.find_element_by_id("strFechaFinal").send_keys(Keys.BACK_SPACE)
+                driver.find_element_by_id("strFechaFinal").send_keys(date_final)
+
+            def getLin(self):
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                driver.find_element_by_id("menu")
+
+                driver.find_element_by_id("ntMenu3d").find_element_by_tag_name("a").click()
+                time.sleep(1)
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+            def getHis2(self):
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                driver.find_element_by_id("menu")
+
+                driver.find_element_by_id("ntMenu4d").find_element_by_class_name("clsSubNode").click()
+                time.sleep(1)
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+        ct = Cartolas()
+        for k in range(1):
+            ct.getHis()
+            ct.filHis()
+            Option = driver.find_element_by_id("combo").find_elements_by_tag_name("option")
+            SelCta = k + 1
+            driver.find_element_by_id("BtnAceptar").click()
+        
+            try:
+                TablaA = driver.find_element_by_id("mDetalle")
+                try:
+                    for t in range(100):
+
+                        Tr_List = TablaA.find_elements_by_tag_name("tr")
+                        Td_list = Tr_List[t].find_elements_by_tag_name("td")
+                        if dt.datetime.today().weekday() == 0:
+                            if Td_list[0].text == (dt.datetime.today() - dt.timedelta(3)).strftime('%d/%m'):
+                                iNum = t
+                        else:
+                            if Td_list[0].text == tm.ayerS():
+                                iNum = t
+
+                except IndexError:
+                    try:
+                        Tr_List = TablaA.find_elements_by_tag_name("tr")
+                        Td_Saldo = Tr_List[iNum].find_elements_by_tag_name("td")
+                        SaldoC = Td_Saldo[6].text
+                        print("%s, EST-%s,  %s" % (siglaEMP, AXNumCta, SaldoC.replace(" ", "")))
+                        ls_saldos.append(('EST', siglaEMP, 'EST-' + AXNumCta, SaldoC))
+                        ct.getHis2()
+                    except IndexError:
+                        iNum = 1
+                        Tr_List = TablaA.find_elements_by_tag_name("tr")
+                        Td_Saldo = Tr_List[iNum].find_elements_by_tag_name("td")
+                        SaldoC = Td_Saldo[6].text
+                        print("%s, EST-%s,  %s" % (siglaEMP, AXNumCta, SaldoC.replace(" ", "")))
+                        ls_saldos.append(('EST', siglaEMP, 'EST-' + AXNumCta, SaldoC))
+                        ct.getHis2()
+            except NoSuchElementException:
+                ct.getLin()
+
+                driver.implicitly_wait(2)
+                Option2 = driver.find_element_by_id("AcctIDFrom").find_elements_by_tag_name("option")
+                Option2[SelCta].click()
+                driver.find_element_by_id("BtnAceptar").find_element_by_tag_name("a").click()
+                time.sleep(1)
+                Var1 = driver.find_element_by_id('tbdatCli').find_element_by_tag_name('tbody')
+                Var2 = Var1.find_element_by_tag_name('tr').find_element_by_tag_name('td')
+                Var3 = Var2.find_elements_by_tag_name('table')
+                Var4 = Var3[2].find_element_by_tag_name('tbody').find_element_by_tag_name('tr')
+                Var5 = Var4.find_element_by_tag_name('td')
+                time.sleep(1)
+                Va5Texto = Var5.text
+                SaldoC = Va5Texto[24:]
+                print("%s, EST-%s,  %s" % (siglaEMP, AXNumCta, SaldoC.replace(" ", "")))
+                ls_saldos.append(('EST', siglaEMP, 'EST-' + AXNumCta, SaldoC))
+                ct.getHis2()
+
+    driver.close()
+
+    drop_abonos_csv(ls_saldos)
+
+
+def new_main():
+    for profile in login_data:
+
+        RutEmp = itemgetter(0)(profile)
+        User = itemgetter(1)(profile)
+        Pass = itemgetter(2)(profile)
+        NumCta = itemgetter(3)(profile)
+        AXNumCta = itemgetter(4)(profile)
+        siglaEMP = itemgetter(5)(profile)
+
+        stop_counter = 0
+        while True:
+            try:
+                driver.get(Web)
+                driver.implicitly_wait(2)
+                driver.find_element_by_id("sidebar1")
+                driver.implicitly_wait(3)
+                driver.switch_to.frame(driver.find_element_by_tag_name("iframe"))
+                driver.implicitly_wait(2)
+
+                driver.find_element_by_id("CustPermIDAux").send_keys(RutEmp)
+                driver.find_element_by_id("CustLoginIDAux").send_keys(User)
+                driver.find_element_by_id("SignonPswdAux").send_keys(Pass)
+                driver.find_element_by_id("enviar").click()
+
+                #con esto veo si estamos en el lugar correcto
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                driver.switch_to.default_content()
+                break
+            except NoSuchElementException:
+                time.sleep(60)
+                if stop_counter > 5:
+                    print('La pagina no esta disponible')
+                    stop_counter += 1
+                    break
+
+        class Cartolas:
+            def getHis(self):
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                MenuIzquierdo = driver.find_element_by_id("menu")
+                driver.find_element_by_id("ntMenu0nb").click()
+                driver.implicitly_wait(2)
+                CarHistorica = driver.find_element_by_id("ntMenu4d")
+                CarHistorica.find_element_by_tag_name("a").click()
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+            def filHis(self):
+                if dt.datetime.today().weekday() == 0:
+                    date_inicial = (dt.datetime.today() - dt.timedelta(3)).strftime('%d/%m/%Y')
+                    date_final = (dt.datetime.today() - dt.timedelta(2)).strftime('%d/%m/%Y')
+                else:
+                    date_inicial = tm.ayer()
+                    date_final = tm.hoy()
+
+                driver.find_element_by_id("strFechaInicio").send_keys(Keys.BACK_SPACE)
+                driver.find_element_by_id("strFechaInicio").send_keys(date_inicial)
+                driver.find_element_by_id("strFechaFinal").send_keys(Keys.BACK_SPACE)
+                driver.find_element_by_id("strFechaFinal").send_keys(date_final)
+
+            def getLin(self):
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                driver.find_element_by_id("menu")
+
+                driver.find_element_by_id("ntMenu3d").find_element_by_tag_name("a").click()
+                time.sleep(1)
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+            def getHis2(self):
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("left"))
+                driver.find_element_by_id("menu")
+
+                driver.find_element_by_id("ntMenu4d").find_element_by_class_name("clsSubNode").click()
+                time.sleep(1)
+                driver.switch_to.default_content()
+                driver.switch_to.frame(driver.find_element_by_name("main"))
+
+        ct = Cartolas()
+
+        ct.getHis()
+        ct.filHis()
+        driver.find_element_by_id("BtnAceptar").click()
+        get_me_a_saldo(AXNumCta,siglaEMP)
+
+
+    driver.close()
+    drop_abonos_csv(ls_saldos)
+
+
+def get_cartola():
+    stop = 0
+    o_bot = outlook_bot('Cartolas')
+    for item in reversed(o_bot.mensajes_en_carpeta()):
+        stop += 1
+        if item.Unread is True:
+            for attach in item.attachments:
+                if '.DAT' in attach.Filename:
+                    attach.SaveAsFile(os.path.abspath(mp.Banco('Estado') +'/'+ attach.Filename))
+        item.Unread = False
+
+        if stop > 20:
+            break
+
+
+if __name__ == '__main__':
+    new_main()
+    get_cartola()
