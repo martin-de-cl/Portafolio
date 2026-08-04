@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+#-*- coding: utf-8 -*-
+
+import os
+import time
+import sys
+import csv
+
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import ElementNotVisibleException, NoSuchElementException, NoSuchFrameException
+from base64 import b64decode
+
+class mypath:
+    def Revpath(self):
+        CWD = os.getcwd()
+        Revpaths = CWD[:-14]
+        return Revpaths
+    def Saldos(self):
+        CWD = os.path.realpath(__file__)
+        Revpaths = CWD[:-14]
+        Cuadraje = Revpaths+"Cuadraje\\Saldos"
+        return Cuadraje
+    def SaldosCSV(self):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Cuadraje = os.path.abspath(os.path.join(Revpaths+"/tmp/saldos_iniciales_online.csv"))
+        return Cuadraje
+    def Banco(self,IDBANCO):
+        folder = os.path.dirname(os.path.abspath(__file__))
+        Revpaths = os.path.sep.join(folder.split(os.path.sep)[:-2])
+        Bancos = os.path.abspath(os.path.join(Revpaths + "/stdin/Cartolas_Bancos/" + IDBANCO))
+        return Bancos
+mp = mypath()
+
+usr = b'dXNlcm5hbWU='
+psw = b'cGFzc3dvcmQ='
+
+
+def get_driver():
+
+    ffp = webdriver.FirefoxProfile()
+    ffp.set_preference("browser.download.folderList", 2)
+    ffp.set_preference("browser.download.manager.showWhenStarting", False)
+    ffp.set_preference("browser.download.dir", mp.Banco('Corpbanca'))
+    ffp.set_preference("browser.helperApps.neverAsk.saveToDisk",
+                       "text/csv, text/force_download, application/csv, application/force_download")
+    return webdriver.Firefox(ffp)
+
+
+def aviso_handlers(driver):
+
+    def aviso_1():
+        driver.switch_to.default_content()
+        driver.find_element_by_xpath('//div[@Class="close_content"]').click()
+        return True
+
+    ls_handlers = [aviso_1]
+
+    for handler in ls_handlers:
+        if handler() is True:
+            break
+    else:
+        raise Exception('No more Handlers - Añade uno')
+
+
+def get_login(driver):
+
+    counter = 0
+
+    web = 'https://banco.itau.cl/wps/portal/iol/web/login/!ut/p/z1/' \
+          '04_Sj9CPykssy0xPLMnMz0vMAfIjo8ziDVCAo4FTkJGTsYGBu7OJfjhYgb-' \
+          'BpauHYbCBn0WYhZmBo5-xoYungZe7QaCBfhQx-g1wAEey9KMoiMJvfLh-' \
+          'FFgJPh8QMqMgNzQ0wiDTEQCkdp5B/dz/d5/L2dBISEvZ0FBIS9nQSEh/'
+
+    driver.get(web)
+
+    while True:
+        try:
+
+            driver.switch_to.default_content()
+            driver.find_element_by_xpath('//input[@id="rut_usuarioID"]').send_keys(b64decode(usr).decode('utf-8'))
+            #driver.find_element_by_xpath('//input[@id="claveId"]').send_keys(Keys.TAB)
+            #time.sleep(1)
+            driver.find_element_by_xpath('//input[@id="claveId"]').send_keys(b64decode(psw).decode('utf-8'))
+            driver.find_element_by_xpath('//button[@id="btnLoginPortal"]').click()
+            break
+        except NoSuchElementException:
+            counter+=1
+            time.sleep(1)
+            if counter > 5:
+                raise Exception('No se pudo hacer login')
+
+
+def get_saldo(driver):
+
+    # Entrega los saldos en el formato necesario para el analisis de dato empresarial
+
+    driver.switch_to.default_content()
+    cuenta = driver.find_element_by_xpath('//span[@name="BicDescAccount"]').text.rsplit(' ',1)[1][-5:]
+
+    saldo = driver.find_element_by_xpath('//span[@name="SALCON_iso8601"]').text.replace('.','').replace('$ ','')
+
+    print('Cuenta %s, Saldo %s' % (cuenta, saldo))
+
+    return ('SIGLABANCO', 'SIGLAEMPRESA', 'SIGLABANCO-CUENTA', saldo)
+
+
+def drop_abonos_csv(CSVARC, tuple_csv):
+    with open(CSVARC, 'a', newline='') as csvfile:
+        sw = csv.writer(csvfile, delimiter=';', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        #for empresa in tuple_csv:
+        for line in tuple_csv:
+            sw.writerow(line)
+
+def main():
+
+    ls_saldos = []
+    driver = get_driver()
+
+    try:
+        get_login(driver)
+        aviso_handlers(driver)
+        ls_saldos.append(get_saldo(driver))
+        drop_abonos_csv(mp.SaldosCSV(), ls_saldos)
+    except NoSuchElementException:
+        aviso_handlers(driver)
+
+    driver.quit()
+
+if __name__ == '__main__':
+    main()
