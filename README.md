@@ -1,9 +1,9 @@
 # Portafolio
 
-
-```╭─ About me ─────────────────────────────────────────────────────────────────────────────╮
-```│  Ingeniero de profesion, Analista por pasion y Programador por entretencion            |
-```|  Mi primer lenguaje fue BASIC en un Atari 800XL, donde mi primer logro fue hacer       |
+```
+╭─ About me ─────────────────────────────────────────────────────────────────────────────╮
+│  Ingeniero de profesion, Analista por pasion y Programador por entretencion            |
+|  Mi primer lenguaje fue BASIC en un Atari 800XL, donde mi primer logro fue hacer       |
 |  un loop infinito.                                                                     |
 |  Eventualmente modifique los archivos Gorillaz.BAS y Nibbles.BAS en QBASIC, para que   |
 |  los colores del antiguo PC de mis padres un NCR 3120 con pantalla monocromatica se    |
