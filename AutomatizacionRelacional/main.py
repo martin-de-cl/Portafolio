@@ -4,9 +4,15 @@
 """
         SW Automation
 
-    Automation project for BHP
+    Automation project for Confidential Minning Enterprise
     
     Este proyecto es una automatizacion para la integracion de datos en un sitio web interno.
+    Busca solucionar el horfanamiento de una pareja de datos, tras una migracion de sistemas,
+    ademas de que no es posible intervenir a nivel de base de datos por reglas de seguridad.
+    Ademas se debe corregir la informacion erronea que fue agregada tras la migracion 
+    proveniente del sistema SAP, documentar su asociacion erroenea y considerarla para la 
+    reporteria.
+    
     Alcances:
         + Tiempo de desarrollo a finalizacion de actividad en produccion de 15 dias
         + Limitar el proceso a trabajo por batches
@@ -14,6 +20,7 @@
         + Base de datos SQLite para seguimiento del proceso y captura de informacion
         + Reporteria para analisis post integracion
         + Generacion de LOG en tiempo real del proceso
+        + Desarrollo en equipo empresarial MacOS
 
     @BY     : MARTIN PIMENTEL TARBUSKOVIC
     @DATE   : 2026_02_26
@@ -122,9 +129,9 @@ class NVBrowser(NewPrint):
 
         usr, psw = self._get_credentials("user"), self._get_credentials("pass")
 
-        self._wait_for_element("//input[@placeholder='BHP Email']")
-        self._slow_typing(self.driver.find_element(By.XPATH, "//input[@placeholder='BHP Email']"), usr)
-        self.driver.find_element(By.XPATH, "//input[@placeholder='BHP Email']").send_keys(Keys.RETURN)
+        self._wait_for_element("//input[@placeholder='CMP Email']")
+        self._slow_typing(self.driver.find_element(By.XPATH, "//input[@placeholder='CMP Email']"), usr)
+        self.driver.find_element(By.XPATH, "//input[@placeholder='CMP Email']").send_keys(Keys.RETURN)
 
         self._wait_for_element("//input[@placeholder='Contraseña']")
         self._slow_typing(self.driver.find_element(By.XPATH, "//input[@placeholder='Contraseña']"), psw)
@@ -144,15 +151,15 @@ class NVBrowser(NewPrint):
         profileStoragePath = path
         system('cp -R ' + tmp_profile + '/* ' + profileStoragePath)
 
-    def _nav_to_spence_main_frame(self):
+    def _nav_to_andrew_main_frame(self):
 
         try:
             self.driver.find_element(By.XPATH, "//*[@id='react-component']/div/header/div/div[2]/button")
             tier1 = self.driver.find_element(By.XPATH, "//button[@type='button']").click()
-            tier2 = tier1.find_element(By.XPATH, "//div[text()='BHP']").click()
-            tier3 = tier2.find_element(By.XPATH, "//div[text()='Minerals Americas']").click()
-            tier4 = tier3.find_element(By.XPATH, "//div[text()='Pampa Norte']").click()
-            tier4 = tier4.find_element(By.XPATH, "//div[text()='spence']").click()
+            tier2 = tier1.find_element(By.XPATH, "//div[text()='CMP']").click()
+            tier3 = tier2.find_element(By.XPATH, "//div[text()='latam minerals']").click()
+            tier4 = tier3.find_element(By.XPATH, "//div[text()='north sector']").click()
+            tier4 = tier4.find_element(By.XPATH, "//div[text()='andrew']").click()
         except NoSuchElementException:
             pass
 
@@ -302,7 +309,7 @@ class NVBrowser(NewPrint):
                 except NoSuchElementException:
                     tmp_texto = 'TIENE DOCUMENTO'
                 if 'actividad no tiene un' in tmp_texto:
-                    self.print_and_log('!', process='WDB', message='Actividad no tiene numero de Documentum asociado: {} - {}'.format(item[0], item[1]))
+                    self.print_and_log('!', process='WDB', message='Actividad no tiene numero de DocumentalSystem asociado: {} - {}'.format(item[0], item[1]))
 
                     self._wait_for_element('//a[@href="/sw/builder/59269/edit/"]')
                     activity_table = self._extract_full_info_table()
@@ -312,7 +319,7 @@ class NVBrowser(NewPrint):
                     self.driver.find_element(By.XPATH, '//input[starts-with(@id,":r")][@name="documentNumber"]').send_keys(item[1])
                     self.driver.find_element(By.XPATH, '//button[text()="Siguiente"]').click()
 
-                    step_two_selector = self._wait_multiple_elements(['//div[text()="Fallo al configurar el número de documento D2"]', '//h2[@data-testid="d2-confirm-configure"]'])
+                    step_two_selector = self._wait_multiple_elements(['//div[text()="Fallo al configurar el número de documento "]', '//h2[@data-testid="-confirm-configure"]'])
                     if 'Confirme si desea configurar la actividad' in self.driver.find_element(By.XPATH, step_two_selector).text:
                         table_4_export = self._extract_confirm_table()
 
@@ -324,7 +331,7 @@ class NVBrowser(NewPrint):
                                                   confirm_table=table_4_export, validate_table=table2_4_export, activity_table=activity_table)
                         self._wait_for_element('//div[@id="notistack-snackbar"]')
                         goalpoast_text = self.driver.find_element(By.XPATH, '//div[@id="notistack-snackbar"]').text
-                        msg1 = "Se ha iniciado la generación del PDF para la actividad. Se le notificará una vez la Instrucción PDF de la plantilla actual se publicará a D2."
+                        msg1 = "Se ha iniciado la generación del PDF para la actividad. Se le notificará una vez la Instrucción PDF de la plantilla actual se publicará a ."
                         self.driver.get(self.WEBSITE)
 
                     elif 'Fallo al configurar' in self.driver.find_element(By.XPATH, step_two_selector).text:
@@ -336,10 +343,10 @@ class NVBrowser(NewPrint):
                         mensaje_1 = parent.find_element(By.XPATH, './/div[@class="MuiAlert-message css-1xsto0d"]/p').text
                         n_activity = parent.find_element(By.XPATH, './/div[@class="MuiAlert-message css-1xsto0d"]/a').get_attribute('href').rsplit('/',1)[1]
 
-                        self.print_and_log('!', process='WDB', message='Numero de Documentum no puede ser asociado {}'.format(item[1]))
+                        self.print_and_log('!', process='WDB', message='Numero de DocumentalSystem no puede ser asociado {}'.format(item[1]))
                         self.DBE.update_sw_status(document_number=item[0], status="UNPROCESSED", activity_table=activity_table,
                                                   rejection_reason="SW_ALREADY_ASOCIATED", additional_info_1=str('{}\n\n{}'.format(mensaje_1, n_activity)))
-                        self.driver.find_element(By.XPATH, '//button[@data-testid="d2-configuration-dialog-close"]').click()
+                        self.driver.find_element(By.XPATH, '//button[@data-testid="-configuration-dialog-close"]').click()
                         self.driver.get(self.WEBSITE)
                 else:
                     self.print_and_log('*', process='WDB', message='Documento cuenta con numero de actividad')
@@ -397,7 +404,7 @@ class NVBrowser(NewPrint):
                     activity_location = 'Not Found'
 
                 if 'actividad no tiene un' in tmp_texto:
-                    self.print_and_log('!', process='WDB', message='Actividad no tiene numero de Documentum asociado: {} - {}'.format(item[0],
+                    self.print_and_log('!', process='WDB', message='Actividad no tiene numero de DocumentalSystem asociado: {} - {}'.format(item[0],
                                                                                                                item[1]))
                     self._wait_for_element('//a[@href="/sw/builder/{}/edit/"]'.format(item[0]))
                     activity_table = self._extract_full_info_table()
@@ -409,7 +416,7 @@ class NVBrowser(NewPrint):
                         sap_number = ''
                     self._expire_document(message=sap_number)
                     if not self._check_if_element_is_present('//button[@data-testid="add-configuration-button"]'):
-                        self.print_and_log('!', process='WDB', message='No es posible configurar un numero de Documentum porque no hay acceso')
+                        self.print_and_log('!', process='WDB', message='No es posible configurar un numero de DocumentalSystem porque no hay acceso')
                         self.DBE.update_sw_status(document_number=item[0], source_file=activity_location, status="UNPROCESSED", rejection_reason='ACCESS_DENIED',additional_info_1=sap_number, activity_table=activity_table)
                     else:
                         self.driver.find_element(By.XPATH, '//button[@data-testid="add-configuration-button"]').click()
@@ -418,8 +425,8 @@ class NVBrowser(NewPrint):
                             item[1])
                         self.driver.find_element(By.XPATH, '//button[text()="Siguiente"]').click()
                         step_two_selector = self._wait_multiple_elements(
-                            ['//div[text()="Fallo al configurar el número de documento D2"]',
-                             '//h2[@data-testid="d2-confirm-configure"]'])
+                            ['//div[text()="Fallo al configurar el número de documento "]',
+                             '//h2[@data-testid="-confirm-configure"]'])
                         if 'Confirme si desea configurar la actividad' in self.driver.find_element(By.XPATH,
                                                                                                    step_two_selector).text:
                             table_4_export = self._extract_confirm_table()
@@ -443,8 +450,8 @@ class NVBrowser(NewPrint):
                                 self.DBE.emergency_update(item[0], goalpoast_text)
                             self._wait_for_element('//p[text()="{}"]'.format(item[1]))
                             sleep(1)
-                            self.print_and_log('+', process='WDB', message='Se ha asociado exitosamente el numero de Documentum')
-                            msg1 = "Se ha iniciado la generación del PDF para la actividad. Se le notificará una vez la Instrucción PDF de la plantilla actual se publicará a D2."
+                            self.print_and_log('+', process='WDB', message='Se ha asociado exitosamente el numero de DocumentalSystem')
+                            msg1 = "Se ha iniciado la generación del PDF para la actividad. Se le notificará una vez la Instrucción PDF de la plantilla actual se publicará a ."
                             self.driver.get(self.WEBSITE)
 
                         elif 'Fallo al configurar' in self.driver.find_element(By.XPATH, step_two_selector).text:
@@ -463,13 +470,13 @@ class NVBrowser(NewPrint):
                                     n_activity = parent.find_element(By.XPATH, '//div[@class="MuiPaper-root MuiPaper-elevation MuiPaper-rounded MuiPaper-elevation0 MuiAlert-root MuiAlert-colorError MuiAlert-standardError MuiAlert-standard css-eqijgq"]').find_element(By.XPATH, './/p[@class="MuiTypography-root MuiTypography-body1 css-1391aac"]').text.replace("'","")
                                 except NoSuchElementException:
                                     n_activity = 'Error unknown'
-                            self.print_and_log('!', process='WDB', message='Numero de Documentum no puede ser asociado {}'.format(item[1]))
+                            self.print_and_log('!', process='WDB', message='Numero de DocumentalSystem no puede ser asociado {}'.format(item[1]))
                             self.DBE.update_sw_status(document_number=item[0], source_file=activity_location, status="UNPROCESSED",
                                                       activity_table=activity_table,
                                                       rejection_reason="SW_ALREADY_ASOCIATED",
                                                       additional_info_1=str('{}\n\n{}'.format(mensaje_1.replace("'",""), n_activity)))
                             self.driver.find_element(By.XPATH,
-                                                     '//button[@data-testid="d2-configuration-dialog-close"]').click()
+                                                     '//button[@data-testid="-configuration-dialog-close"]').click()
                             self.driver.get(self.WEBSITE)
                 else:
                     self.print_and_log('*', process='WDB', message='Documento cuenta con numero de actividad')
@@ -519,11 +526,11 @@ class NVBrowser(NewPrint):
         self.driver.quit()
 
     def _check_if_login_is_necessary(self):
-        self._wait_for_element("//input[@placeholder='BHP Email']")
-        tmp =self._check_if_element_is_present("//input[@placeholder='BHP Password']")
+        self._wait_for_element("//input[@placeholder='CMP Email']")
+        tmp =self._check_if_element_is_present("//input[@placeholder='CMP Password']")
         print(tmp)
 
-        if self._check_if_element_is_present("//input[@placeholder='BHP Password']"):
+        if self._check_if_element_is_present("//input[@placeholder='CMP Password']"):
             print('LOGIN ELEMENT FOUND')
             return True
         elif self._check_if_element_is_present('//svg[@data-testid="PersonRoundedIcon"]'):
@@ -546,13 +553,13 @@ class NVBrowser(NewPrint):
             print('fallo guardar cookies')
         self.driver.quit()
 
-    def _check_if_we_are_in_spence(self):
+    def _check_if_we_are_in_andrew(self):
         try:
-            self._wait_for_element('//button[text()="Spence"]')
-            company_txt = self.driver.find_element(By.XPATH, '//button[text()="Spence"]')
+            self._wait_for_element('//button[text()="andrew"]')
+            company_txt = self.driver.find_element(By.XPATH, '//button[text()="andrew"]')
             return True
         except:
-            print('No estamos en spence')
+            print('No estamos en andrew')
             return False
 
     def test_suite3(self):
@@ -563,7 +570,7 @@ class NVBrowser(NewPrint):
 
     def test_suite2(self):
         self._open_site(website=self.WEBSITE)
-        if self._check_if_we_are_in_spence():
+        if self._check_if_we_are_in_andrew():
            print('Do Something')
            self._case_one()
         else:
