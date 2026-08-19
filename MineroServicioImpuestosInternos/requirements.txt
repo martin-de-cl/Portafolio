@@ -2,3 +2,4 @@ win32com
 pdfkit
 BeautifulSoup
 selenium
+openpyxl
